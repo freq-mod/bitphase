@@ -34,7 +34,7 @@
 	const containerContext: { audioService: AudioService } = getContext('container');
 
 	const AUDIO_ACCEPT =
-		'audio/*,.dmc,.wav,.aiff,.aif,.raw,.pcm';
+		'audio/*,.dmc,.wav';
 
 	let {
 		instrument,
