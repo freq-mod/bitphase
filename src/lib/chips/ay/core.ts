@@ -7,6 +7,7 @@ import { AYUMI_AUDIO_SLOT_KIND } from './audio-slot-kind';
 import { AY_PLAYBACK_DEBUG } from './playback-debug';
 import { copyAyInstrumentFields } from './instrument';
 import { describeAyEffect, listAyEffectStatusHints } from './effects';
+import { transposeAyAdditionalPitch } from './transpose';
 import type { Chip } from '../types';
 
 export const AY_CHIP: Chip = {
@@ -24,7 +25,8 @@ export const AY_CHIP: Chip = {
 	playbackDebug: AY_PLAYBACK_DEBUG,
 	copyInstrumentFields: copyAyInstrumentFields,
 	describeEffect: describeAyEffect,
-	listEffectStatusHints: listAyEffectStatusHints
+	listEffectStatusHints: listAyEffectStatusHints,
+	transposeAdditionalPitch: transposeAyAdditionalPitch
 };
 
 export const CHIP = AY_CHIP;

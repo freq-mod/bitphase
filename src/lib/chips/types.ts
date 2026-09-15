@@ -8,6 +8,7 @@ import type { Component } from 'svelte';
 import type { ChipPlaybackDebugSpec } from './base/playback-debug';
 
 import type { Instrument } from '../models/song';
+import type { GenericPattern } from '../models/song/generic';
 
 export interface Chip {
 	type: string;
@@ -34,4 +35,9 @@ export interface Chip {
 		name: string;
 		params: string;
 	}>;
+	transposeAdditionalPitch?: (
+		generic: GenericPattern,
+		semitones: number,
+		tuningTable: number[]
+	) => void;
 }

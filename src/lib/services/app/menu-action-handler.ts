@@ -6,10 +6,12 @@ import SettingsModal from '../../components/Settings/SettingsModal.svelte';
 import AboutModal from '../../components/Modal/AboutModal.svelte';
 import EffectsModal from '../../components/Modal/EffectsModal.svelte';
 import UserScriptsModal from '../../components/Modal/UserScriptsModal.svelte';
+import TransposeSongModal from '../../components/Modal/TransposeSongModal.svelte';
 import WavExportSettingsModal from '../../components/Modal/WavExportSettingsModal.svelte';
 import ProgressModal from '../../components/Modal/ProgressModal.svelte';
 import {
 	ACTION_APPLY_SCRIPT,
+	ACTION_TRANSPOSE_SONG,
 	ACTION_PLAY_FROM_BEGINNING,
 	ACTION_PLAY_FROM_CURSOR,
 	ACTION_PLAY_FROM_ROW,
@@ -27,6 +29,7 @@ import { NES_CHIP } from '../../chips/nes';
 import type { Chip } from '../../chips/types';
 import type { MenuActionContext } from './menu-action-context';
 import { projectStore } from '../../stores/project.svelte';
+import { SongTransposeService } from '../song/song-transpose-service';
 
 async function createNewSongFromMenu(ctx: MenuActionContext, chip: Chip): Promise<void> {
 	ctx.playbackStore.isPlaying = false;
@@ -264,6 +267,14 @@ export function createMenuActionHandler(ctx: MenuActionContext) {
 				if (result && patternEditor?.applyScript) {
 					patternEditor.applyScript(result);
 				}
+				return;
+			}
+
+			if (data.action === ACTION_TRANSPOSE_SONG) {
+				if (ctx.playbackStore.isPlaying) return;
+				const semitones = await ctx.open(TransposeSongModal, {});
+				if (typeof semitones !== 'number' || semitones === 0) return;
+				SongTransposeService.applyToSong(ctx.getActiveSongIndex(), semitones);
 				return;
 			}
 

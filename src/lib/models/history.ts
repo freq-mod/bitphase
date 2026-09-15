@@ -27,6 +27,7 @@ export type ProjectActionType =
 	| 'settings.update'
 	| 'chipSettings.update'
 	| 'virtualChannels.update'
+	| 'song.transpose'
 	| 'composite';
 
 export type ProjectHistoryDomain =

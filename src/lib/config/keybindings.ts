@@ -13,6 +13,7 @@ export const ACTION_INCREMENT_VALUE = 'increment-value';
 export const ACTION_DECREMENT_VALUE = 'decrement-value';
 export const ACTION_TRANSPOSE_OCTAVE_UP = 'transpose-octave-up';
 export const ACTION_TRANSPOSE_OCTAVE_DOWN = 'transpose-octave-down';
+export const ACTION_TRANSPOSE_SONG = 'transpose-song';
 export const ACTION_APPLY_SCRIPT = 'apply-script';
 export const ACTION_TOGGLE_PLAYBACK = 'toggle-playback';
 export const ACTION_PLAY_FROM_ROW = 'play-from-row';
@@ -60,6 +61,11 @@ export const BINDABLE_ACTIONS: BindableAction[] = [
 		id: ACTION_TRANSPOSE_OCTAVE_DOWN,
 		label: 'Transpose Octave Down',
 		defaultShortcut: 'Shift+-'
+	},
+	{
+		id: ACTION_TRANSPOSE_SONG,
+		label: 'Transpose Song…',
+		defaultShortcut: 'Mod+Shift+T'
 	},
 	{ id: ACTION_OCTAVE_UP, label: 'Octave Up (Editor)', defaultShortcut: '*' },
 	{ id: ACTION_OCTAVE_DOWN, label: 'Octave Down (Editor)', defaultShortcut: '/' },
@@ -134,6 +140,7 @@ export const BINDABLE_ACTIONS: BindableAction[] = [
 
 export const GLOBAL_ACTION_IDS = new Set([
 	ACTION_APPLY_SCRIPT,
+	ACTION_TRANSPOSE_SONG,
 	ACTION_TOGGLE_PLAYBACK,
 	ACTION_PLAY_FROM_ROW,
 	ACTION_PLAY_FROM_CURSOR,
@@ -150,6 +157,7 @@ export const PATTERN_EDITOR_ACTION_IDS = new Set(
 	BINDABLE_ACTIONS.filter(
 		(a) =>
 			a.id !== ACTION_APPLY_SCRIPT &&
+			a.id !== ACTION_TRANSPOSE_SONG &&
 			a.id !== ACTION_PLAY_FROM_ROW &&
 			a.id !== ACTION_PLAY_FROM_CURSOR &&
 			a.id !== ACTION_PLAY_FROM_BEGINNING &&
@@ -160,7 +168,8 @@ export const PATTERN_EDITOR_ACTION_IDS = new Set(
 
 const DISABLED_GETTERS: Partial<Record<string, () => boolean>> = {
 	[ACTION_UNDO]: () => playbackStore.isPlaying || !undoRedoStore.canUndo,
-	[ACTION_REDO]: () => playbackStore.isPlaying || !undoRedoStore.canRedo
+	[ACTION_REDO]: () => playbackStore.isPlaying || !undoRedoStore.canRedo,
+	[ACTION_TRANSPOSE_SONG]: () => playbackStore.isPlaying
 };
 
 const EDIT_MENU_ACTION_IDS = [
@@ -174,6 +183,7 @@ const EDIT_MENU_ACTION_IDS = [
 	ACTION_DECREMENT_VALUE,
 	ACTION_TRANSPOSE_OCTAVE_UP,
 	ACTION_TRANSPOSE_OCTAVE_DOWN,
+	ACTION_TRANSPOSE_SONG,
 	ACTION_SWAP_CHANNEL_LEFT,
 	ACTION_SWAP_CHANNEL_RIGHT,
 	ACTION_INSERT_PATTERN_ROW,
@@ -183,7 +193,11 @@ const EDIT_MENU_ACTION_IDS = [
 
 const actionById = Object.fromEntries(BINDABLE_ACTIONS.map((a) => [a.id, a]));
 
-const dividerAfter = new Set([ACTION_PASTE_WITHOUT_ERASING, ACTION_DECREMENT_VALUE]);
+const dividerAfter = new Set([
+	ACTION_PASTE_WITHOUT_ERASING,
+	ACTION_DECREMENT_VALUE,
+	ACTION_TRANSPOSE_SONG
+]);
 
 export function buildEditMenuItems(): MenuItem[] {
 	const items: MenuItem[] = [];
