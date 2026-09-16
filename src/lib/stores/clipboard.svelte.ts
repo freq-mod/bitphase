@@ -4,6 +4,7 @@ export interface ClipboardCell {
 	fieldKey: string;
 	fieldType: string;
 	value: unknown;
+	channelIndex?: number;
 }
 
 export interface ClipboardData {
@@ -112,7 +113,8 @@ class ClipboardStore {
 			Number.isInteger(cell.column) &&
 			typeof cell.fieldKey === 'string' &&
 			typeof cell.fieldType === 'string' &&
-			Object.hasOwn(cell, 'value')
+			Object.hasOwn(cell, 'value') &&
+			(cell.channelIndex === undefined || Number.isInteger(cell.channelIndex))
 		);
 	}
 }

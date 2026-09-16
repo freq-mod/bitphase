@@ -20,9 +20,16 @@ import { PatternTemplateParser } from './editing/pattern-template-parsing';
 import { EffectField } from './editing/effect-field';
 import {
 	getPatternEffectColumnCounts,
-	isEffectFieldKey,
 	resolveSchemaField
 } from '../../chips/base/channel-effect-columns';
+import {
+	clipboardAllowsNoteEnvelopeConversion,
+	clipboardFieldsAreCompatible,
+	clipboardNoteEnvelopeConversionTarget,
+	minClipboardChannelIndex,
+	resolveClipboardDestChannelIndex,
+	resolveClipboardDestFieldKey
+} from './clipboard-field-mapping';
 
 export interface ClipboardContext {
 	pattern: Pattern;
@@ -87,7 +94,8 @@ export class ClipboardService {
 					column: col - minCol,
 					fieldKey: cell.fieldKey,
 					fieldType: field.type,
-					value
+					value,
+					channelIndex: fieldInfo.channelIndex
 				});
 			}
 		}
@@ -124,7 +132,8 @@ export class ClipboardService {
 					column: 0,
 					fieldKey: cell.fieldKey,
 					fieldType: field.type,
-					value
+					value,
+					channelIndex: fieldInfo.channelIndex
 				}
 			],
 			0,
@@ -177,7 +186,8 @@ export class ClipboardService {
 					column: col - minCol,
 					fieldKey: cell.fieldKey,
 					fieldType: field.type,
-					value
+					value,
+					channelIndex: fieldInfo.channelIndex
 				});
 
 				deletionOps.push({ row, fieldInfo, field });
@@ -306,71 +316,20 @@ export class ClipboardService {
 		context: ClipboardContext,
 		onPatternUpdate: (pattern: Pattern) => void
 	): Promise<void> {
-		const clipboardData = await this.getClipboardData();
-		if (!clipboardData) return;
-
-		const {
-			pattern: originalPattern,
-			selectedRow,
-			selectedColumn,
-			getCellPositions,
-			getPatternRowData,
-			createEditingContext
-		} = context;
-		let pattern = originalPattern;
-
-		for (const clipCell of clipboardData.cells) {
-			const targetRow = selectedRow + clipCell.row;
-			const targetCol = selectedColumn + clipCell.column;
-
-			if (targetRow < 0 || targetRow >= pattern.length) continue;
-
-			const rowString = getPatternRowData(pattern, targetRow);
-			const cellPositions = getCellPositions(rowString, targetRow);
-			if (targetCol < 0 || targetCol >= cellPositions.length) continue;
-
-			const cell = cellPositions[targetCol];
-			if (!cell.fieldKey) continue;
-
-			const pasteValue = this.getPasteValue(
-				clipCell,
-				cell.fieldKey,
-				context.tuningTable,
-				context.getOctave
-			);
-			const isCompatibleField = this.fieldsAreCompatible(clipCell.fieldKey, cell.fieldKey);
-			if (pasteValue === null && !isCompatibleField) continue;
-
-			const editingContext = createEditingContext(pattern, targetRow, targetCol);
-			const fieldInfo = PatternFieldDetection.detectFieldAtCursor(editingContext);
-			if (!fieldInfo) continue;
-
-			pattern = PatternValueUpdates.updateFieldValue(
-				{ ...editingContext, pattern },
-				fieldInfo,
-				pasteValue
-			);
-		}
-
-		if (pattern !== originalPattern) {
-			onPatternUpdate(pattern);
-		}
-	}
-
-	private static fieldsAreCompatible(sourceKey: string, targetKey: string): boolean {
-		if (sourceKey === targetKey) return true;
-		return isEffectFieldKey(sourceKey) && isEffectFieldKey(targetKey);
+		await this.applyClipboardCells(context, onPatternUpdate, false);
 	}
 
 	private static getPasteValue(
 		clipCell: ClipboardCell,
 		targetFieldKey: string,
 		tuningTable: number[] | undefined,
-		getOctave: (() => number) | undefined
+		getOctave: (() => number) | undefined,
+		allowNoteEnvelopeConversion: boolean
 	): string | number | null | Record<string, unknown> {
-		if (this.fieldsAreCompatible(clipCell.fieldKey, targetFieldKey)) {
+		if (clipboardFieldsAreCompatible(clipCell.fieldKey, targetFieldKey)) {
 			return clipCell.value as string | number | null | Record<string, unknown>;
 		}
+		if (!allowNoteEnvelopeConversion) return null;
 		if (
 			clipCell.fieldKey === 'envelopeValue' &&
 			targetFieldKey === 'note' &&
@@ -390,6 +349,80 @@ export class ClipboardService {
 			return noteStringToEnvelopePeriod(noteStr, tuningTable, getOctave());
 		}
 		return null;
+	}
+
+	private static findFieldColumnInScope(
+		fieldKey: string,
+		destChannelIndex: number,
+		pattern: Pattern,
+		rowString: string,
+		cellPositions: Array<{ fieldKey?: string; charIndex: number }>,
+		schema: ClipboardContext['schema']
+	): number | null {
+		for (let col = 0; col < cellPositions.length; col++) {
+			const cell = cellPositions[col];
+			if (cell.fieldKey !== fieldKey) continue;
+			const fieldInfo = this.detectFieldDirect(cell, rowString, schema, pattern);
+			if (!fieldInfo) continue;
+			if (destChannelIndex < 0) {
+				if (fieldInfo.isGlobal) return col;
+				continue;
+			}
+			if (!fieldInfo.isGlobal && fieldInfo.channelIndex === destChannelIndex) {
+				return col;
+			}
+		}
+		return null;
+	}
+
+	private static resolvePasteColumn(
+		clipCell: ClipboardCell,
+		context: ClipboardContext,
+		pattern: Pattern,
+		rowString: string,
+		cellPositions: Array<{ fieldKey?: string; charIndex: number }>,
+		originChannelIndex: number,
+		originFieldKey: string | undefined,
+		minSourceChannelIndex: number,
+		sourceFieldKeys: string[],
+		allowNoteEnvelopeConversion: boolean
+	): number | null {
+		const destChannelIndex = resolveClipboardDestChannelIndex(
+			clipCell.channelIndex,
+			originChannelIndex,
+			minSourceChannelIndex
+		);
+		const destFieldKey = resolveClipboardDestFieldKey(
+			clipCell.fieldKey,
+			originFieldKey,
+			sourceFieldKeys
+		);
+		const matchedCol = this.findFieldColumnInScope(
+			destFieldKey,
+			destChannelIndex,
+			pattern,
+			rowString,
+			cellPositions,
+			context.schema
+		);
+		if (matchedCol !== null) return matchedCol;
+		if (!allowNoteEnvelopeConversion) return null;
+		const conversionTarget = clipboardNoteEnvelopeConversionTarget(clipCell.fieldKey);
+		if (!conversionTarget) return null;
+		const conversionChannel =
+			conversionTarget === 'note'
+				? originChannelIndex >= 0
+					? originChannelIndex
+					: 0
+				: -1;
+		return this.findFieldColumnInScope(
+			conversionTarget,
+			conversionChannel,
+			pattern,
+			rowString,
+			cellPositions,
+			context.schema
+		);
 	}
 
 	private static isEmptyValue(value: unknown, fieldType: string, fieldKey: string): boolean {
@@ -427,6 +460,14 @@ export class ClipboardService {
 		context: ClipboardContext,
 		onPatternUpdate: (pattern: Pattern) => void
 	): Promise<void> {
+		await this.applyClipboardCells(context, onPatternUpdate, true);
+	}
+
+	private static async applyClipboardCells(
+		context: ClipboardContext,
+		onPatternUpdate: (pattern: Pattern) => void,
+		skipEmptyValues: boolean
+	): Promise<void> {
 		const clipboardData = await this.getClipboardData();
 		if (!clipboardData) return;
 
@@ -439,33 +480,61 @@ export class ClipboardService {
 			createEditingContext
 		} = context;
 		let pattern = originalPattern;
+		const allowNoteEnvelopeConversion = clipboardAllowsNoteEnvelopeConversion(
+			clipboardData.cells.map((cell) => cell.fieldKey)
+		);
+		const sourceFieldKeys = clipboardData.cells.map((cell) => cell.fieldKey);
+		const minSourceChannelIndex = minClipboardChannelIndex(
+			clipboardData.cells.map((cell) => cell.channelIndex)
+		);
 
 		for (const clipCell of clipboardData.cells) {
-			if (this.isEmptyValue(clipCell.value, clipCell.fieldType, clipCell.fieldKey)) {
+			if (
+				skipEmptyValues &&
+				this.isEmptyValue(clipCell.value, clipCell.fieldType, clipCell.fieldKey)
+			) {
 				continue;
 			}
 
 			const targetRow = selectedRow + clipCell.row;
-			const targetCol = selectedColumn + clipCell.column;
-
 			if (targetRow < 0 || targetRow >= pattern.length) continue;
 
 			const rowString = getPatternRowData(pattern, targetRow);
 			const cellPositions = getCellPositions(rowString, targetRow);
-			if (targetCol < 0 || targetCol >= cellPositions.length) continue;
+			const originCell = cellPositions[selectedColumn];
+			const originInfo = originCell
+				? this.detectFieldDirect(originCell, rowString, context.schema, pattern)
+				: null;
+			const originChannelIndex = originInfo?.channelIndex ?? 0;
+			const resolvedCol = this.resolvePasteColumn(
+				clipCell,
+				context,
+				pattern,
+				rowString,
+				cellPositions,
+				originChannelIndex,
+				originInfo?.fieldKey,
+				minSourceChannelIndex,
+				sourceFieldKeys,
+				allowNoteEnvelopeConversion
+			);
+			if (resolvedCol === null) continue;
 
-			const cell = cellPositions[targetCol];
-			if (!cell.fieldKey) continue;
+			const cell = cellPositions[resolvedCol];
+			if (!cell?.fieldKey) continue;
 
 			const pasteValue = this.getPasteValue(
 				clipCell,
 				cell.fieldKey,
 				context.tuningTable,
-				context.getOctave
+				context.getOctave,
+				allowNoteEnvelopeConversion
 			);
-			if (pasteValue === null) continue;
+			if (pasteValue === null && !clipboardFieldsAreCompatible(clipCell.fieldKey, cell.fieldKey)) {
+				continue;
+			}
 
-			const editingContext = createEditingContext(pattern, targetRow, targetCol);
+			const editingContext = createEditingContext(pattern, targetRow, resolvedCol);
 			const fieldInfo = PatternFieldDetection.detectFieldAtCursor(editingContext);
 			if (!fieldInfo) continue;
 
