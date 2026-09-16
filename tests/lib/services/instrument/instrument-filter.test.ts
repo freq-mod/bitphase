@@ -4,7 +4,8 @@ import {
 	filterInstrumentsForActiveChipTypes,
 	filterInstrumentsForChip,
 	getOrderedProjectChipTypes,
-	resolveInstrumentChipType
+	resolveInstrumentChipType,
+	resolveInstrumentPreviewChip
 } from '@/lib/services/instrument/instrument-filter';
 
 describe('instrument-filter', () => {
@@ -28,6 +29,15 @@ describe('instrument-filter', () => {
 
 		expect(getOrderedProjectChipTypes(chipProcessors)).toEqual(['ay', 'nes']);
 		expect(getOrderedProjectChipTypes([{ chip: { type: 'nes' } }])).toEqual(['nes']);
+	});
+
+	it('resolves preview chip from the instruments tab over the active song chip', () => {
+		const ay = { type: 'ay' };
+		const nes = { type: 'nes' };
+
+		expect(resolveInstrumentPreviewChip([ay, nes], 'nes', ay)).toBe(nes);
+		expect(resolveInstrumentPreviewChip([ay, nes], '', ay)).toBe(ay);
+		expect(resolveInstrumentPreviewChip([ay, nes], 'sid', ay)).toBe(ay);
 	});
 
 	it('removes instruments only when no songs remain for that chip type', () => {

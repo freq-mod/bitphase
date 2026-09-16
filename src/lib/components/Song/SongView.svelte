@@ -41,7 +41,8 @@
 	import { ACTION_REDO, ACTION_TOGGLE_PLAYBACK, ACTION_UNDO } from '../../config/keybindings';
 	import {
 		filterInstrumentsForChip,
-		getOrderedProjectChipTypes
+		getOrderedProjectChipTypes,
+		resolveInstrumentPreviewChip
 	} from '../../services/instrument/instrument-filter';
 	import { EmptyState } from '../EmptyState';
 	import { newSongOptions } from '../../config/app-menu';
@@ -72,6 +73,7 @@
 	let selectedColumn = $state(0);
 	let selectedFieldKey = $state<string | null>(null);
 	let selectedChannelIndex = $state(-1);
+	let instrumentsChipType = $state('');
 
 	function clampPatternOrderIndex(index: number, patternOrderLength: number): number {
 		if (patternOrderLength <= 0) return 0;
@@ -216,8 +218,15 @@
 			remaining -= labels.length;
 		}
 	}
+	const previewChip = $derived(
+		resolveInstrumentPreviewChip(
+			chipProcessors.map((processor) => processor.chip),
+			instrumentsChipType,
+			activeChipProcessor?.chip
+		)
+	);
 	const previewInstrumentId = $derived.by(() => {
-		const chipType = activeChipProcessor?.chip.type;
+		const chipType = previewChip?.type;
 		if (!chipType) return '';
 		const chipInstruments = filterInstrumentsForChip(projectStore.instruments, chipType);
 		const selectedId = editorStateStore.getCurrentInstrument(chipType);
@@ -225,6 +234,15 @@
 			return selectedId;
 		}
 		return chipInstruments[0]?.id ?? '';
+	});
+	const previewTuningTable = $derived.by(() => {
+		const chipType = previewChip?.type;
+		if (!chipType) return [];
+		const songIndex = chipProcessors.findIndex((processor) => processor.chip.type === chipType);
+		if (songIndex >= 0) {
+			return projectStore.songs[songIndex]?.tuningTable ?? [];
+		}
+		return projectStore.songs[activeEditorIndex]?.tuningTable ?? [];
 	});
 
 	const services: { audioService: AudioService } = getContext('container');
@@ -750,7 +768,7 @@
 					aria-label="Collapse panel"></button>
 			{/if}
 		</div>
-		<SelectionPalette chip={activeChipProcessor?.chip} chips={paletteChips} />
+		<SelectionPalette chip={previewChip} chips={paletteChips} />
 		<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 		<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 		<div
@@ -777,6 +795,7 @@
 						{:else if tabId === 'instruments'}
 							<InstrumentsView
 								bind:isExpanded={isRightPanelExpanded}
+								bind:selectedChipType={instrumentsChipType}
 								{chipProcessors}
 								{activeEditorIndex}
 								syncChipType={activeChipProcessor?.chip.type} />
@@ -792,15 +811,16 @@
 			</div>
 			{#if projectStore.songs.length > 0 && activeEditorIndex < projectStore.songs.length}
 				<div class="flex shrink-0 flex-col border-t border-[var(--color-app-border)]/50">
-					{#if settingsStore.showInstrumentPreview && activeChipProcessor?.chip.previewRow}
-						{@const PreviewRow = activeChipProcessor.chip.previewRow}
-						<div class="flex flex-col gap-2 bg-[var(--color-app-surface)] px-2 py-3">
-							<PreviewRow
-								chip={activeChipProcessor.chip}
-								instrumentId={previewInstrumentId}
-								tuningTable={projectStore.songs[activeEditorIndex]?.tuningTable ??
-									[]} />
-						</div>
+					{#if settingsStore.showInstrumentPreview && previewChip?.previewRow}
+						{#key previewChip.type}
+							{@const PreviewRow = previewChip.previewRow}
+							<div class="flex flex-col gap-2 bg-[var(--color-app-surface)] px-2 py-3">
+								<PreviewRow
+									chip={previewChip}
+									instrumentId={previewInstrumentId}
+									tuningTable={previewTuningTable} />
+							</div>
+						{/key}
 					{/if}
 					{#if settingsStore.showOscilloscopes}
 						{@const muteTick = channelMuteStore.muteState}

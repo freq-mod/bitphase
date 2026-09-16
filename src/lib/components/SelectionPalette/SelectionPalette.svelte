@@ -57,7 +57,9 @@
 				activeTabId === 'effects' ? 'w-72' : 'w-44'
 			]}>
 			{#if activeTabId === 'instruments'}
-				<InstrumentSelectList {chipType} />
+				{#key chipType}
+					<InstrumentSelectList {chipType} />
+				{/key}
 			{:else if activeTabId === 'effects'}
 				<EffectCheatSheet {chips} />
 			{/if}

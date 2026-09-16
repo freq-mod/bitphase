@@ -41,3 +41,13 @@ export function getOrderedProjectChipTypes(
 	}
 	return CHIP_TYPES.filter((type) => types.has(type));
 }
+
+export function resolveInstrumentPreviewChip<T extends { type: string }>(
+	chips: T[],
+	selectedInstrumentChipType: string | undefined,
+	activeChip: T | undefined
+): T | undefined {
+	const chipType = selectedInstrumentChipType || activeChip?.type;
+	if (!chipType) return activeChip;
+	return chips.find((chip) => chip.type === chipType) ?? activeChip;
+}

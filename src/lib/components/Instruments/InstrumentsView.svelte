@@ -63,12 +63,14 @@
 		isExpanded = $bindable(false),
 		chipProcessors,
 		syncChipType,
-		activeEditorIndex = 0
+		activeEditorIndex = 0,
+		selectedChipType = $bindable('')
 	}: {
 		isExpanded: boolean;
 		chipProcessors: ChipProcessor[];
 		syncChipType?: string;
 		activeEditorIndex?: number;
+		selectedChipType?: string;
 	} = $props();
 
 	let allInstruments = $derived(projectStore.instruments);
@@ -78,7 +80,6 @@
 			return chip ? [{ id: chipType, label: chip.name }] : [];
 		});
 	});
-	let selectedChipType = $state('');
 	let lastSyncedEditorIndex = $state(-1);
 	const chip = $derived.by(() => {
 		const chipType = selectedChipType || chipTypeTabs[0]?.id || syncChipType || 'ay';
@@ -683,7 +684,7 @@
 				class:opacity-50={!hasSongs}>
 				<div class="h-full overflow-auto p-4">
 					{#if chipInstruments[selectedInstrumentIndex] && InstrumentEditor}
-						{#key chipInstruments[selectedInstrumentIndex].id}
+						{#key `${chip?.type}:${chipInstruments[selectedInstrumentIndex].id}`}
 							<InstrumentEditor
 								instrument={chipInstruments[selectedInstrumentIndex]}
 								{asHex}
