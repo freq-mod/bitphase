@@ -51,3 +51,24 @@ export function resolveInstrumentPreviewChip<T extends { type: string }>(
 	if (!chipType) return activeChip;
 	return chips.find((chip) => chip.type === chipType) ?? activeChip;
 }
+
+export function resolvePaletteChipType(
+	selectedChipType: string | undefined,
+	activeChipType: string | undefined,
+	availableChipTypes: readonly string[]
+): string {
+	if (selectedChipType && availableChipTypes.includes(selectedChipType)) {
+		return selectedChipType;
+	}
+	if (activeChipType && availableChipTypes.includes(activeChipType)) {
+		return activeChipType;
+	}
+	return availableChipTypes[0] ?? '';
+}
+
+export function shouldSyncSelectedChipToActiveEditor(
+	lastSyncedEditorIndex: number,
+	editorIndex: number
+): boolean {
+	return lastSyncedEditorIndex >= 0 && lastSyncedEditorIndex !== editorIndex;
+}

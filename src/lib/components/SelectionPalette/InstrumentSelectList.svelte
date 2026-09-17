@@ -5,7 +5,7 @@
 	import { ITEM_COMPACT_ROW_HEIGHT } from '../../config/item-grid';
 	import { itemGridIdTextClass, itemGridNameTextClass } from '../../utils/item-grid-cell';
 
-	let { chipType = 'ay' }: { chipType?: string } = $props();
+	let { chipType = '' }: { chipType?: string } = $props();
 
 	const instruments = $derived(filterInstrumentsForChip(projectStore.instruments, chipType));
 	const selectedId = $derived(editorStateStore.getCurrentInstrument(chipType));

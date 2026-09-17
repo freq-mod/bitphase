@@ -35,7 +35,8 @@
 	import {
 		filterInstrumentsForChip,
 		getOrderedProjectChipTypes,
-		resolveInstrumentChipType
+		resolveInstrumentChipType,
+		shouldSyncSelectedChipToActiveEditor
 	} from '../../services/instrument/instrument-filter';
 	import {
 		applyInstrumentPreset,
@@ -119,7 +120,10 @@
 
 	$effect(() => {
 		const editorIndex = activeEditorIndex;
-		if (editorIndex === lastSyncedEditorIndex) return;
+		if (!shouldSyncSelectedChipToActiveEditor(lastSyncedEditorIndex, editorIndex)) {
+			lastSyncedEditorIndex = editorIndex;
+			return;
+		}
 		lastSyncedEditorIndex = editorIndex;
 		if (syncChipType) {
 			selectedChipType = syncChipType;

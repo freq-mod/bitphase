@@ -3,6 +3,7 @@
 	import IconCarbonMagicWandFilled from '~icons/carbon/magic-wand-filled';
 	import IconCarbonList from '~icons/carbon/list';
 	import type { Chip } from '../../chips/types';
+	import { resolvePaletteChipType } from '../../services/instrument/instrument-filter';
 	import {
 		selectionPaletteStore,
 		type SelectionPaletteTabId
@@ -10,9 +11,20 @@
 	import EffectCheatSheet from './EffectCheatSheet.svelte';
 	import InstrumentSelectList from './InstrumentSelectList.svelte';
 
-	let { chip, chips = [] }: { chip?: Chip; chips?: Chip[] } = $props();
+	let {
+		chip,
+		chips = [],
+		chipType: selectedChipType = ''
+	}: {
+		chip?: Chip;
+		chips?: Chip[];
+		chipType?: string;
+	} = $props();
 
-	const chipType = $derived(chip?.type);
+	const availableChipTypes = $derived(chips.map((item) => item.type));
+	const chipType = $derived(
+		resolvePaletteChipType(selectedChipType, chip?.type, availableChipTypes)
+	);
 
 	const paletteTabs: {
 		id: SelectionPaletteTabId;
@@ -50,21 +62,18 @@
 			</button>
 		{/each}
 	</div>
-	{#if isOpen}
-		<div
-			class={[
-				'flex h-full shrink-0 flex-col overflow-hidden border border-[var(--color-app-border)] bg-[var(--color-app-surface)]',
-				activeTabId === 'effects' ? 'w-72' : 'w-44'
-			]}>
-			{#if activeTabId === 'instruments'}
-				{#key chipType}
-					<InstrumentSelectList {chipType} />
-				{/key}
-			{:else if activeTabId === 'effects'}
-				<EffectCheatSheet {chips} />
-			{/if}
-		</div>
-	{/if}
+	<div
+		class={[
+			'flex h-full shrink-0 flex-col overflow-hidden border border-[var(--color-app-border)] bg-[var(--color-app-surface)]',
+			!isOpen && 'hidden',
+			isOpen && activeTabId === 'effects' ? 'w-72' : 'w-44'
+		]}>
+		{#if activeTabId === 'instruments'}
+			<InstrumentSelectList {chipType} />
+		{:else if activeTabId === 'effects'}
+			<EffectCheatSheet {chips} />
+		{/if}
+	</div>
 </div>
 
 <style>

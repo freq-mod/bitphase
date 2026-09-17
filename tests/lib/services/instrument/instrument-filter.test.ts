@@ -5,7 +5,9 @@ import {
 	filterInstrumentsForChip,
 	getOrderedProjectChipTypes,
 	resolveInstrumentChipType,
-	resolveInstrumentPreviewChip
+	resolveInstrumentPreviewChip,
+	resolvePaletteChipType,
+	shouldSyncSelectedChipToActiveEditor
 } from '@/lib/services/instrument/instrument-filter';
 
 describe('instrument-filter', () => {
@@ -38,6 +40,20 @@ describe('instrument-filter', () => {
 		expect(resolveInstrumentPreviewChip([ay, nes], 'nes', ay)).toBe(nes);
 		expect(resolveInstrumentPreviewChip([ay, nes], '', ay)).toBe(ay);
 		expect(resolveInstrumentPreviewChip([ay, nes], 'sid', ay)).toBe(ay);
+	});
+
+	it('keeps the picker on the selected chip instead of defaulting to ay', () => {
+		expect(resolvePaletteChipType('nes', 'ay', ['ay', 'nes'])).toBe('nes');
+		expect(resolvePaletteChipType('', 'nes', ['ay', 'nes'])).toBe('nes');
+		expect(resolvePaletteChipType('', undefined, ['nes'])).toBe('nes');
+		expect(resolvePaletteChipType('', undefined, ['ay', 'nes'])).toBe('ay');
+		expect(resolvePaletteChipType('sid', 'nes', ['ay', 'nes'])).toBe('nes');
+	});
+
+	it('syncs the instrument chip only after the active editor actually changes', () => {
+		expect(shouldSyncSelectedChipToActiveEditor(-1, 0)).toBe(false);
+		expect(shouldSyncSelectedChipToActiveEditor(0, 0)).toBe(false);
+		expect(shouldSyncSelectedChipToActiveEditor(0, 1)).toBe(true);
 	});
 
 	it('removes instruments only when no songs remain for that chip type', () => {

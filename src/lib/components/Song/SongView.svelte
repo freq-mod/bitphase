@@ -768,7 +768,10 @@
 					aria-label="Collapse panel"></button>
 			{/if}
 		</div>
-		<SelectionPalette chip={previewChip} chips={paletteChips} />
+		<SelectionPalette
+			chip={previewChip}
+			chips={paletteChips}
+			chipType={instrumentsChipType} />
 		<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 		<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 		<div
