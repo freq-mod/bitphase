@@ -1,3 +1,5 @@
+import { isNesHardwareEnvelopeReg } from './nes-instrument-utils.js';
+
 const NES_WAVEFORM_SCALE = 1;
 const NES_SQUARE_NOISE_MAX = 15;
 const NES_DMC_MAX = 127;
@@ -19,18 +21,18 @@ export function noiseScopeSampleFromEmulatorLevel(rawOut, random = Math.random) 
 }
 
 export function noiseChannelLevelFromEmulator(rawOut, channel) {
+	if (rawOut > 0) {
+		return Math.min(1, (rawOut * 2) / NES_SQUARE_NOISE_MAX);
+	}
+	if (isNesHardwareEnvelopeReg(channel?.volumeReg)) {
+		return 0;
+	}
 	const registerVolume = Math.max(
 		channel?.volume ?? 0,
 		channel?.volumeReg >= 0 ? channel.volumeReg & 15 : 0
 	);
-	if (rawOut > 0) {
-		return Math.min(1, Math.max(registerVolume / NES_SQUARE_NOISE_MAX, (rawOut * 2) / NES_SQUARE_NOISE_MAX));
-	}
 	if (registerVolume > 0) {
 		return Math.min(1, registerVolume / NES_SQUARE_NOISE_MAX);
-	}
-	if (channel?.enabled) {
-		return 1;
 	}
 	return 0;
 }

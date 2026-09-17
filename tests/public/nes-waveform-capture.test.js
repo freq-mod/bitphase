@@ -24,11 +24,23 @@ describe('NesWaveformCapture', () => {
 		expect(noiseChannelLevelFromEmulator(0, { enabled: false, volume: 0 })).toBe(0);
 		expect(noiseChannelLevelFromEmulator(7.5, { enabled: false, volume: 0 })).toBeCloseTo(1);
 		expect(noiseChannelLevelFromEmulator(0, { enabled: true, volume: 0, volumeReg: -1 })).toBe(
-			1
+			0
 		);
 		expect(
 			noiseChannelLevelFromEmulator(0, { enabled: true, volume: 0, volumeReg: 0x1c })
 		).toBeCloseTo(12 / 15);
+	});
+
+	it('does not treat the envelope rate nibble as amplitude after the envelope fades', () => {
+		expect(
+			noiseChannelLevelFromEmulator(0, { enabled: true, volume: 15, volumeReg: 0x0f })
+		).toBe(0);
+		expect(
+			noiseChannelLevelFromEmulator(0, { enabled: true, volume: 15, volumeReg: 0x00 })
+		).toBe(0);
+		expect(
+			noiseChannelLevelFromEmulator(3, { enabled: true, volume: 15, volumeReg: 0x0f })
+		).toBeCloseTo(6 / 15);
 	});
 
 	it('draws noise scope from the same level source as the volume bar', () => {
@@ -36,6 +48,9 @@ describe('NesWaveformCapture', () => {
 		expect(
 			noiseScopeSampleFromChannel(0, { enabled: true, volume: 0, volumeReg: 0x1c }, () => 0)
 		).toBeCloseTo(0.4);
+		expect(
+			noiseScopeSampleFromChannel(0, { enabled: true, volume: 15, volumeReg: 0x0f }, () => 0)
+		).toBe(0);
 		expect(
 			noiseScopeSampleFromChannel(7.5, { enabled: false, volume: 0 }, () => 1)
 		).toBeCloseTo(-0.5);

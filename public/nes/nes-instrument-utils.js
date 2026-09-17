@@ -114,6 +114,10 @@ function resolveConstantVolumeBit(envelope) {
 	return envelope ? 0 : 1 << 4;
 }
 
+export function isNesHardwareEnvelopeReg(volumeReg) {
+	return volumeReg >= 0 && (volumeReg & (1 << 4)) === 0;
+}
+
 export function buildSquareEnvelopeVolumeReg(duty, envelope, volumeOrRate, soundLength) {
 	const volume = volumeOrRate & 15;
 	const dutyBits = (duty & 3) << 6;

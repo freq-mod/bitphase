@@ -220,6 +220,44 @@ describe('NesWorkletSlot preview', () => {
 		expect(Math.abs(slot.channelWaveformBuf[3][0])).toBeGreaterThan(0);
 	});
 
+	it('keeps faded noise envelope silent on the oscilloscope and volume bar', () => {
+		const slot = createPreviewSlot();
+		slot.paused = false;
+		slot.state.channelMuted[3] = false;
+		slot.state.channelSoundEnabled[3] = true;
+		slot.registerState.channels[3].enabled = true;
+		slot.registerState.channels[3].volume = 15;
+		slot.registerState.channels[3].volumeReg = 0x0f;
+		slot.apuEngine.process = () => ({ left: 0, right: 0 });
+		slot.apuEngine.canReadChannelOutputs = () => true;
+		slot.apuEngine.getChannelRawOut = () => 0;
+		slot.waveformCapture.readChannelOutputs = () => [0, 0, 0, 0, 0];
+		globalThis.sampleRate = 48000;
+
+		slot.accumulateStereoOutput(0, { l: 0, r: 0 });
+
+		expect(slot.channelWaveformBuf[3][0]).toBe(0);
+		expect(slot._collectChannelLevels()[3]).toBe(0);
+	});
+
+	it('follows pulse hardware envelope output on the volume bar', () => {
+		const slot = createPreviewSlot();
+		slot.paused = false;
+		slot.state.channelMuted[0] = false;
+		slot.state.channelSoundEnabled[0] = true;
+		slot.registerState.channels[0].enabled = true;
+		slot.registerState.channels[0].volume = 15;
+		slot.registerState.channels[0].volumeReg = 0x0f;
+		slot.apuEngine.process = () => ({ left: 0, right: 0 });
+		slot.apuEngine.canReadChannelOutputs = () => true;
+		slot.apuEngine.getChannelRawOut = (channelIndex) => (channelIndex === 0 ? 4 : 0);
+		globalThis.sampleRate = 48000;
+
+		slot.accumulateStereoOutput(0, { l: 0, r: 0 });
+
+		expect(slot._collectChannelLevels()[0]).toBeCloseTo(4 / 15);
+	});
+
 	it('keeps muted noise flat even when registers still look active', () => {
 		const slot = createPreviewSlot();
 		slot.paused = false;

@@ -4,6 +4,7 @@ import NesApuEngine, { createNesApuEngine } from './nes-apu-engine.js';
 import NesChipRegisterState from './nes-chip-register-state.js';
 import NesVirtualChannelMixer from './nes-virtual-channel-mixer.js';
 import { NesWaveformCapture, noiseChannelLevelFromEmulator, noiseScopeSampleFromChannel } from './nes-waveform-capture.js';
+import { isNesHardwareEnvelopeReg } from './nes-instrument-utils.js';
 import TrackerPatternProcessor from '../tracker/tracker-pattern-processor.js';
 import { TrackerWorkletSlot } from '../tracker/tracker-worklet-slot.js';
 import { NES_CHANNEL_COUNT } from './nes-constants.js';
@@ -28,7 +29,7 @@ export class NesWorkletSlot extends TrackerWorkletSlot {
 		this.waveformPostCounter = 0;
 		this.waveformPostInterval = 6;
 		this.waveformCapture = new NesWaveformCapture(NES_CHANNEL_COUNT);
-		this._noiseLevelPeak = 0;
+		this._hwLevelPeaks = new Float32Array(NES_CHANNEL_COUNT);
 	}
 
 	_slotState() {
@@ -194,6 +195,7 @@ export class NesWorkletSlot extends TrackerWorkletSlot {
 		this.channelWaveformWriteIndex = 0;
 		this.waveformPostCounter = 0;
 		this.waveformCapture.reset();
+		this._hwLevelPeaks.fill(0);
 	}
 
 	enforceMuteState() {
@@ -287,9 +289,7 @@ export class NesWorkletSlot extends TrackerWorkletSlot {
 			return;
 		}
 		this.channelWaveformBuf[hardwareChannelIndex].fill(0);
-		if (hardwareChannelIndex === 3) {
-			this._noiseLevelPeak = 0;
-		}
+		this._hwLevelPeaks[hardwareChannelIndex] = 0;
 	}
 
 	handleSetChannelMute({ channelIndex, muted }) {
@@ -380,8 +380,9 @@ export class NesWorkletSlot extends TrackerWorkletSlot {
 		const audibleIndices = this.virtualChannelMixer.hasVirtualChannels()
 			? new Set(this.virtualChannelMixer.getAudibleVirtualChannelIndices(this.registerState))
 			: null;
-		const noisePeak = this._noiseLevelPeak;
-		this._noiseLevelPeak = 0;
+		const hwPeaks = Array.from(this._hwLevelPeaks);
+		this._hwLevelPeaks.fill(0);
+		const canReadOutputs = this.apuEngine?.canReadChannelOutputs?.() === true;
 
 		for (let i = 0; i < channelCount; i++) {
 			if (this.state.channelMuted[i]) continue;
@@ -392,7 +393,7 @@ export class NesWorkletSlot extends TrackerWorkletSlot {
 				: i;
 
 			if (hwType === 3) {
-				levels[i] = noiseChannelLevelFromEmulator(noisePeak, channel);
+				levels[i] = noiseChannelLevelFromEmulator(hwPeaks[3] ?? 0, channel);
 				continue;
 			}
 
@@ -404,6 +405,8 @@ export class NesWorkletSlot extends TrackerWorkletSlot {
 				levels[i] = channel.enabled ? 1 : 0;
 			} else if (hwType === 4) {
 				levels[i] = Math.min(1, (channel.volume ?? 0) / 127);
+			} else if (isNesHardwareEnvelopeReg(channel?.volumeReg) && canReadOutputs) {
+				levels[i] = Math.min(1, Math.max(0, (hwPeaks[hwType] ?? 0) / 15));
 			} else {
 				levels[i] = Math.min(1, Math.max(0, (channel.volume ?? 0) / 15));
 			}
@@ -459,10 +462,13 @@ export class NesWorkletSlot extends TrackerWorkletSlot {
 			return;
 		}
 
-		if (this.apuEngine.canReadChannelOutputs?.() && !this._isHardwareChannelMuted(3)) {
-			const noiseRaw = this.apuEngine.getChannelRawOut(3);
-			if (noiseRaw > this._noiseLevelPeak) {
-				this._noiseLevelPeak = noiseRaw;
+		if (this.apuEngine.canReadChannelOutputs?.()) {
+			for (let ch = 0; ch < this._hwLevelPeaks.length; ch++) {
+				if (this._isHardwareChannelMuted(ch)) continue;
+				const raw = this.apuEngine.getChannelRawOut(ch);
+				if (raw > this._hwLevelPeaks[ch]) {
+					this._hwLevelPeaks[ch] = raw;
+				}
 			}
 		}
 
