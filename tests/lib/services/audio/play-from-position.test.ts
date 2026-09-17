@@ -161,6 +161,23 @@ describe('collectPlaybackCarry', () => {
 		});
 	});
 
+	it('does not carry empty AY envelope shape from a previous pattern', () => {
+		const first = makePattern(0, [2]);
+		first.channels[0]!.rows[0]!.instrument = 1;
+		first.channels[0]!.rows[0]!.envelopeShape = 0;
+		const second = makePattern(1, [2]);
+
+		const ayCarry = collectPlaybackCarry(
+			[0, 1],
+			(id) => (id === 0 ? first : second),
+			1,
+			0,
+			AY_CHIP_SCHEMA
+		);
+		expect(ayCarry?.channelFields?.[0]).toEqual({ instrument: 1 });
+		expect(ayCarry?.channelFields?.[0]).not.toHaveProperty('envelopeShape');
+	});
+
 	it('carries the last speed command from any effect column', () => {
 		const first = makePattern(0, [2]);
 		first.channels[0]!.rows[0]!.effects = [

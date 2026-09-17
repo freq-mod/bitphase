@@ -233,6 +233,15 @@ describe('ay-instrument-utils TS/JS parity', () => {
 		}
 	});
 
+	it('isPatternEnvelopeShapeSet matches', () => {
+		for (const shape of [undefined, null, 0, 1, 8, 12, 14, 15, 16]) {
+			const label = String(shape);
+			expect(js.isPatternEnvelopeShapeSet(shape as never), label).toBe(
+				ts.isPatternEnvelopeShapeSet(shape as number | null | undefined)
+			);
+		}
+	});
+
 	it('isClassicSidTimerWaveform matches', () => {
 		const waveforms = [[15, 0], [15, 0, 0], [14, 0], [15, 1], [], [15], [0xf, 0x0]];
 		for (const waveform of waveforms) {

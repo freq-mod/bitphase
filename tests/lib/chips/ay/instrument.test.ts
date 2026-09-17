@@ -25,6 +25,7 @@ import {
 	effectiveRowTimerPwmSweepMin,
 	effectiveInstrumentTimerPwmDuty,
 	isClassicSidTimerWaveform,
+	isPatternEnvelopeShapeSet,
 	rowSupportsTimerPwm,
 	rowUsesSyncbuzzerPwmDuty,
 	resolveSyncbuzzerWaveform,
@@ -428,6 +429,16 @@ describe('ay instrument timer fields', () => {
 		expect(computeFmTonePeriod(1000, 16, 'period')).toBe(1016);
 		expect(computeEnvFmEnvelopePeriod(2000, -16, 'period')).toBe(1984);
 		expect(computeEnvFmEnvelopePeriod(2000, 12, 'semitone')).toBe(1000);
+	});
+
+	it('treats missing and empty pattern envelope shapes as unset', () => {
+		expect(isPatternEnvelopeShapeSet(undefined)).toBe(false);
+		expect(isPatternEnvelopeShapeSet(null)).toBe(false);
+		expect(isPatternEnvelopeShapeSet(0)).toBe(false);
+		expect(isPatternEnvelopeShapeSet(15)).toBe(false);
+		expect(isPatternEnvelopeShapeSet(1)).toBe(true);
+		expect(isPatternEnvelopeShapeSet(12)).toBe(true);
+		expect(isPatternEnvelopeShapeSet(14)).toBe(true);
 	});
 
 	it('formats and parses space-separated timer waveform strings', () => {

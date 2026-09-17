@@ -994,6 +994,100 @@ describe('AYAudioDriver', () => {
 		});
 	});
 
+	describe('pattern envelope shape', () => {
+		function createEnvelopeState() {
+			const state = new AyumiState();
+			state.setInstruments(legacyInstruments([
+				{
+					id: '01',
+					rows: [{ tone: true, volume: 15, noise: false, envelope: true }],
+					loop: 0
+				}
+			]));
+			state.channelInstruments = [0, -1, -1];
+			state.channelMuted = [false, false, false];
+			state.channelSoundEnabled = [true, false, false];
+			state.channelEnvelopeEnabled = [false, false, false];
+			state.instrumentPositions = [0, 0, 0];
+			state.envelopeOnOffCounter = 0;
+			return state;
+		}
+
+		function createRegisterState() {
+			return {
+				channels: [
+					{ tone: 0, volume: 0, mixer: { tone: false, noise: false, envelope: false } },
+					{ tone: 0, volume: 0, mixer: { tone: false, noise: false, envelope: false } },
+					{ tone: 0, volume: 0, mixer: { tone: false, noise: false, envelope: false } }
+				],
+				noise: 0,
+				envelopePeriod: 0,
+				envelopeShape: 0,
+				forceEnvelopeShapeWrite: false
+			};
+		}
+
+		it('does not enable hardware envelope when the pattern shape is missing', () => {
+			const driver = new AYAudioDriver();
+			const state = createEnvelopeState();
+			const registerState = createRegisterState();
+			driver._processEnvelope(state, 0, {}, { envelopeValue: null }, registerState);
+			expect(state.channelEnvelopeEnabled[0]).toBe(false);
+			expect(registerState.channels[0].mixer.envelope).toBe(false);
+			expect(registerState.envelopePeriod).toBe(0);
+			expect(registerState.forceEnvelopeShapeWrite).toBe(false);
+		});
+
+		it('does not enable hardware envelope when the pattern shape is empty', () => {
+			const driver = new AYAudioDriver();
+			const state = createEnvelopeState();
+			const registerState = createRegisterState();
+			driver._processEnvelope(
+				state,
+				0,
+				{ envelopeShape: 0 },
+				{ envelopeValue: null },
+				registerState
+			);
+			expect(state.channelEnvelopeEnabled[0]).toBe(false);
+			expect(registerState.channels[0].mixer.envelope).toBe(false);
+			expect(registerState.envelopePeriod).toBe(0);
+		});
+
+		it('disables hardware envelope when the pattern shape is F', () => {
+			const driver = new AYAudioDriver();
+			const state = createEnvelopeState();
+			state.channelEnvelopeEnabled = [true, false, false];
+			const registerState = createRegisterState();
+			registerState.channels[0].mixer.envelope = true;
+			driver._processEnvelope(
+				state,
+				0,
+				{ envelopeShape: 15 },
+				{ envelopeValue: null },
+				registerState
+			);
+			expect(state.channelEnvelopeEnabled[0]).toBe(false);
+			expect(registerState.channels[0].mixer.envelope).toBe(false);
+		});
+
+		it('enables hardware envelope when a real pattern shape is set', () => {
+			const driver = new AYAudioDriver();
+			const state = createEnvelopeState();
+			const registerState = createRegisterState();
+			driver._processEnvelope(
+				state,
+				0,
+				{ envelopeShape: 12 },
+				{ envelopeValue: null },
+				registerState
+			);
+			expect(state.channelEnvelopeEnabled[0]).toBe(true);
+			expect(registerState.channels[0].mixer.envelope).toBe(true);
+			expect(registerState.envelopeShape).toBe(12);
+		});
+	});
+
 	describe('syncbuzzer envelope shape ownership', () => {
 		function createSyncbuzzerInstrument(timerWaveform: number[]) {
 			return {

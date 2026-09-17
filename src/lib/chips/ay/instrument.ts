@@ -333,8 +333,10 @@ export function isClassicSidTimerWaveform(waveform: readonly number[]): boolean 
 	return waveform.length === 2 && (waveform[0] & 0xf) === 15 && (waveform[1] & 0xf) === 0;
 }
 
-export function isPatternEnvelopeShapeSet(envelopeShape: number): boolean {
-	return envelopeShape !== 0 && envelopeShape !== 15;
+export function isPatternEnvelopeShapeSet(
+	envelopeShape: number | null | undefined
+): boolean {
+	return envelopeShape != null && envelopeShape > 0 && envelopeShape < 15;
 }
 
 export function isDefaultSidTimerWaveform(waveform: readonly number[]): boolean {

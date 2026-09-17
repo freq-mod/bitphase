@@ -291,7 +291,7 @@ export function isClassicSidTimerWaveform(waveform) {
 }
 
 export function isPatternEnvelopeShapeSet(envelopeShape) {
-	return envelopeShape !== 0 && envelopeShape !== 15;
+	return envelopeShape != null && envelopeShape > 0 && envelopeShape < 15;
 }
 
 export function resolveSyncbuzzerWaveform(timerRow, patternEnvelopeShape) {
