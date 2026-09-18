@@ -12,8 +12,7 @@
 		onpointerdown,
 		onpointermove,
 		onpointerup,
-		onpointercancel,
-		onkeydown
+		onpointercancel
 	}: {
 		handleEl?: HTMLDivElement | null;
 		left: number;
@@ -26,7 +25,6 @@
 		onpointermove: (event: PointerEvent) => void;
 		onpointerup: (event: PointerEvent) => void;
 		onpointercancel: (event: PointerEvent) => void;
-		onkeydown: (event: KeyboardEvent) => void;
 	} = $props();
 </script>
 
@@ -38,7 +36,7 @@
 	]}
 	style="left: {left}px; width: {MACRO_LOOP_HANDLE_WIDTH}px; height: {height}px"
 	role="slider"
-	tabindex="0"
+	tabindex="-1"
 	aria-orientation="horizontal"
 	aria-label="{label} loop start"
 	aria-valuemin={0}
@@ -48,8 +46,7 @@
 	{onpointerdown}
 	{onpointermove}
 	{onpointerup}
-	{onpointercancel}
-	{onkeydown}>
+	{onpointercancel}>
 	<div
 		class="h-2 w-2.5 shrink-0 rounded-[2px] bg-[var(--color-app-primary)] shadow-sm transition-transform duration-150 group-hover:scale-110">
 	</div>

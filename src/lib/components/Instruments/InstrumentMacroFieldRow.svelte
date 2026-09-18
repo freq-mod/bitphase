@@ -6,6 +6,9 @@
 	import IconCarbonSettingsAdjust from '~icons/carbon/settings-adjust';
 	import IconCarbonArrowUp from '~icons/carbon/arrow-up';
 	import IconCarbonArrowDown from '~icons/carbon/arrow-down';
+	import IconCarbonChevronUp from '~icons/carbon/chevron-up';
+	import IconCarbonChevronDown from '~icons/carbon/chevron-down';
+	import { fly } from 'svelte/transition';
 	import {
 		instrumentMacroAccentColor,
 		type InstrumentMacroField,
@@ -17,7 +20,11 @@
 		instrumentMacroEnumLabel,
 		instrumentMacroUsesBarChart,
 		integerMacroBarStyle,
-		macroIconClass
+		macroBarOverflowDirection,
+		macroBarZeroNormalized,
+		macroIconClass,
+		MACRO_BAR_INSET,
+		defaultMacroBarViewMin
 	} from './instrument-macro-ui';
 
 	let {
@@ -25,6 +32,7 @@
 		values,
 		stepWidthPx,
 		rowHeight,
+		viewMin = defaultMacroBarViewMin(field),
 		isExpanded = false,
 		onPaintStart,
 		onStepClick,
@@ -34,6 +42,7 @@
 		values: InstrumentMacroValue[];
 		stepWidthPx: number;
 		rowHeight: number;
+		viewMin?: number;
 		isExpanded?: boolean;
 		onPaintStart: (index: number, event: PointerEvent, fromY: boolean) => void;
 		onStepClick?: (fieldId: string, index: number) => void;
@@ -44,14 +53,24 @@
 	const gateIconClass = $derived(macroIconClass(isExpanded));
 	const sequenceWidth = $derived(stepWidthPx * values.length);
 	const usesBarChart = $derived(instrumentMacroUsesBarChart(field));
+	const zeroNorm = $derived(macroBarZeroNormalized(field, viewMin));
+	const plotId = $derived(`macro-bar-${field.id}`);
 </script>
 
 <div
-	class="flex shrink-0"
+	id={plotId}
+	class="relative flex shrink-0"
 	style="width: {sequenceWidth}px; height: {rowHeight}px"
 	data-shared-row={field.id}>
+	{#if usesBarChart && zeroNorm !== null}
+		<div
+			class="pointer-events-none absolute right-0 left-0 z-[1] h-px bg-[var(--color-app-text-muted)]/35"
+			style="bottom: calc({MACRO_BAR_INSET}px + (100% - {MACRO_BAR_INSET * 2}px) * {zeroNorm})">
+		</div>
+	{/if}
 	{#each values as value, index (index)}
 		{#if usesBarChart}
+			{@const overflow = macroBarOverflowDirection(field, value, viewMin)}
 			<button
 				type="button"
 				class="relative cursor-crosshair border-0 border-r border-[var(--color-app-border)]/60 bg-[var(--color-app-surface-secondary)] p-0 last:border-r-0"
@@ -60,8 +79,27 @@
 					? `${field.label} ${instrumentMacroEnumLabel(field, value)} step ${index}`
 					: `${field.label} step ${index}`}
 				onpointerdown={(event) => onPaintStart(index, event, true)}>
-				<div class="absolute rounded-sm" style={integerMacroBarStyle(field, value, accent)}>
-				</div>
+				{#if overflow}
+					<span
+						class={[
+							'pointer-events-none absolute z-[1] flex w-full justify-center',
+							overflow === 'up' ? 'top-0' : 'bottom-0'
+						]}
+						style="color: {accent}"
+						transition:fly={{ y: overflow === 'up' ? -4 : 4, duration: 140 }}>
+						<span class="absolute right-0 left-0 h-px" style="background: {accent}"></span>
+						{#if overflow === 'up'}
+							<IconCarbonChevronUp class="relative h-2.5 w-2.5" />
+						{:else}
+							<IconCarbonChevronDown class="relative h-2.5 w-2.5" />
+						{/if}
+					</span>
+				{:else}
+					<div
+						class="absolute rounded-sm"
+						style={integerMacroBarStyle(field, value, accent, viewMin)}>
+					</div>
+				{/if}
 			</button>
 		{:else if field.kind === 'enum'}
 			{@const option = instrumentMacroEnumOption(field, value)}

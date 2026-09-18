@@ -3,16 +3,37 @@ import type { InstrumentMacroField } from '@/lib/chips/base/instrument-macros';
 import { AY_MIXER_MACRO_FIELDS } from '@/lib/chips/ay/mixer-macros';
 import {
 	applyInstrumentMacroSequenceText,
-	applyMacroLengthKey,
-	applyMacroLoopKey,
+	clampMacroBarViewMin,
 	cycleInstrumentMacroEnum,
+	defaultMacroBarViewMin,
 	formatMacroSequenceText,
 	instrumentMacroEnumIsActive,
 	instrumentMacroEnumLabel,
 	instrumentMacroUsesBarChart,
 	instrumentMacroUsesSquareSteps,
+	integerFromMacroBarNormalized,
 	integerMacroBarStyle,
+	macroBarOverflowDirection,
+	macroBarNeedsScroll,
+	macroBarViewMinForValues,
+	macroBarViewMinFromTrackY,
+	macroBarVisibleSpan,
+	macroBarZeroNormalized,
+	macroBarScaleThumbLayout,
+	macroBarScaleThumbRatio,
+	macroBarScaleThumbT,
+	macroBarScaleCenterT,
+	macroBarScaleCenterViewMin,
+	snapMacroBarViewMinToCenterTick,
+	snapMacroBarViewMinCrossingCenter,
+	macroBarScaleShouldCatchCenter,
+	macroBarScaleShouldHoldCenter,
+	macroBarScaleThumbNearCenter,
+	macroBarScaleUnsnapFromCenter,
+	macroBarViewMinFromDragDelta,
+	MACRO_BAR_SCALE_MIN_THUMB_PX,
 	macroFieldRowHeight,
+	panMacroBarViewMin,
 	parseMacroSequenceText
 } from '@/lib/components/Instruments/instrument-macro-ui';
 
@@ -96,6 +117,8 @@ describe('macroFieldRowHeight', () => {
 	});
 
 	it('keeps integer rows taller than gate rows', () => {
+		expect(macroFieldRowHeight(integerField, false)).toBe(140);
+		expect(macroFieldRowHeight(integerField, true)).toBe(168);
 		expect(macroFieldRowHeight(integerField, false)).toBeGreaterThan(
 			macroFieldRowHeight(booleanField, false)
 		);
@@ -125,25 +148,129 @@ describe('integerMacroBarStyle', () => {
 	});
 });
 
-describe('macro handle keys', () => {
-	it('moves the loop with arrows and jumps with home/end', () => {
-		const event = { key: 'ArrowRight', preventDefault() {} } as KeyboardEvent;
-		expect(applyMacroLoopKey(event, 2, 5)).toBe(3);
-		expect(applyMacroLoopKey({ key: 'Home', preventDefault() {} } as KeyboardEvent, 2, 5)).toBe(
-			0
-		);
-		expect(applyMacroLoopKey({ key: 'End', preventDefault() {} } as KeyboardEvent, 2, 5)).toBe(
-			5
-		);
+describe('macro bar visible range', () => {
+	const signedField: InstrumentMacroField = {
+		id: 'toneAdd',
+		label: 'Offset',
+		title: 'Tone Offset',
+		kind: 'integer',
+		min: -4096,
+		max: 4095,
+		defaultValue: 0
+	};
+	const noiseField: InstrumentMacroField = {
+		id: 'noiseAdd',
+		label: 'Offset',
+		title: 'Noise Offset',
+		kind: 'integer',
+		min: -31,
+		max: 31,
+		defaultValue: 0
+	};
+
+	it('zooms signed wide fields to -64..64 by default', () => {
+		expect(defaultMacroBarViewMin(signedField)).toBe(-64);
+		expect(macroBarVisibleSpan(signedField)).toBe(128);
+		expect(macroBarNeedsScroll(signedField)).toBe(true);
 	});
 
-	it('grows and shrinks length with arrows', () => {
-		expect(
-			applyMacroLengthKey({ key: 'ArrowRight', preventDefault() {} } as KeyboardEvent, 4)
-		).toBe(5);
-		expect(
-			applyMacroLengthKey({ key: 'ArrowLeft', preventDefault() {} } as KeyboardEvent, 4)
-		).toBe(3);
+	it('keeps small ranges fully visible', () => {
+		expect(defaultMacroBarViewMin(integerField)).toBe(0);
+		expect(macroBarVisibleSpan(integerField)).toBe(15);
+		expect(macroBarNeedsScroll(integerField)).toBe(false);
+		expect(defaultMacroBarViewMin(noiseField)).toBe(-31);
+		expect(macroBarNeedsScroll(noiseField)).toBe(false);
+	});
+
+	it('maps paint Y onto the visible window, not the full field range', () => {
+		expect(integerFromMacroBarNormalized(signedField, 0, -64)).toBe(-64);
+		expect(integerFromMacroBarNormalized(signedField, 0.5, -64)).toBe(0);
+		expect(integerFromMacroBarNormalized(signedField, 1, -64)).toBe(64);
+		expect(integerFromMacroBarNormalized(signedField, 1, 64)).toBe(192);
+	});
+
+	it('clamps the window to the field range', () => {
+		expect(clampMacroBarViewMin(signedField, -9000)).toBe(-4096);
+		expect(clampMacroBarViewMin(signedField, 9000)).toBe(3967);
+		expect(clampMacroBarViewMin(signedField, 0)).toBe(0);
+	});
+
+	it('pans to include values outside the default window', () => {
+		expect(macroBarViewMinForValues(signedField, [0, 8, -4])).toBe(-64);
+		expect(macroBarViewMinForValues(signedField, [200, 220])).toBe(146);
+	});
+
+	it('draws signed bars from zero inside the visible window', () => {
+		const style = integerMacroBarStyle(signedField, 32, 'red', -64);
+		expect(style).toContain('background: red');
+		expect(style).toContain('* 0.5');
+		expect(style).toContain('* 0.25');
+	});
+
+	it('points at off-screen values so you know which way to scroll', () => {
+		expect(macroBarOverflowDirection(signedField, 32, -64)).toBeNull();
+		expect(macroBarOverflowDirection(signedField, 200, -64)).toBeNull();
+		expect(macroBarOverflowDirection(signedField, 0, 128)).toBe('down');
+		expect(macroBarOverflowDirection(signedField, 50, 128)).toBe('down');
+		expect(macroBarOverflowDirection(signedField, 200, 128)).toBeNull();
+		expect(macroBarOverflowDirection(signedField, 400, 128)).toBeNull();
+		expect(macroBarOverflowDirection(signedField, 0, -4096)).toBe('up');
+		expect(macroBarOverflowDirection(integerField, 0, 0)).toBeNull();
+		expect(macroBarOverflowDirection(integerField, 15, 0)).toBeNull();
+	});
+
+	it('places the zero line in the middle of the default window', () => {
+		expect(macroBarZeroNormalized(signedField, -64)).toBe(0.5);
+		expect(macroBarZeroNormalized(signedField, 64)).toBeNull();
+		expect(macroBarZeroNormalized(integerField, 0)).toBeNull();
+	});
+
+	it('inverts the scrollbar so higher values are at the top', () => {
+		expect(macroBarViewMinFromTrackY(signedField, 0)).toBe(3967);
+		expect(macroBarViewMinFromTrackY(signedField, 1)).toBe(-4096);
+	});
+
+	it('snaps a click on the center tick and leaves nearby values reachable', () => {
+		expect(macroBarScaleCenterViewMin(signedField)).toBe(-64);
+		expect(macroBarScaleCenterT(signedField)).toBeCloseTo(0.5, 1);
+		expect(snapMacroBarViewMinToCenterTick(signedField, 0, 50, 0, 100)).toBe(-64);
+		expect(snapMacroBarViewMinToCenterTick(signedField, 2000, 20, 0, 100)).toBe(2000);
+		expect(macroBarScaleUnsnapFromCenter(signedField, 60, 50)).toBe(-65);
+		expect(macroBarScaleUnsnapFromCenter(signedField, 40, 50)).toBe(-63);
+		expect(macroBarViewMinFromDragDelta(signedField, -65, 60, 59, 100)).toBeGreaterThan(-65);
+		expect(snapMacroBarViewMinCrossingCenter(signedField, 0, -80)).toBe(-64);
+		expect(snapMacroBarViewMinCrossingCenter(signedField, -64, -72)).toBe(-72);
+		expect(macroBarScaleShouldCatchCenter(signedField, 3967, -4096)).toBe(true);
+		expect(macroBarScaleShouldCatchCenter(signedField, 2000, 1800)).toBe(false);
+		expect(macroBarScaleShouldCatchCenter(signedField, -64, -80)).toBe(false);
+		expect(macroBarScaleShouldCatchCenter(signedField, -65, -80)).toBe(false);
+		expect(macroBarScaleShouldCatchCenter(signedField, 2000, -50)).toBe(false);
+		expect(macroBarScaleShouldCatchCenter(signedField, 2000, -64)).toBe(true);
+		expect(macroBarScaleShouldCatchCenter(signedField, 2000, -80)).toBe(true);
+		expect(macroBarScaleShouldCatchCenter(signedField, -2000, 0)).toBe(true);
+		expect(macroBarScaleThumbNearCenter(signedField, -65, 400)).toBe(true);
+		expect(macroBarScaleThumbNearCenter(signedField, 2000, 400)).toBe(false);
+		expect(macroBarScaleShouldHoldCenter(0, 1)).toBe(true);
+		expect(macroBarScaleShouldHoldCenter(40, 1)).toBe(true);
+		expect(macroBarScaleShouldHoldCenter(40, 2)).toBe(false);
+		expect(macroBarScaleShouldHoldCenter(8, 4)).toBe(true);
+	});
+
+	it('sizes the thumb to the visible span, not a padded percentage', () => {
+		expect(macroBarScaleThumbRatio(signedField)).toBeCloseTo(128 / 8191);
+		const top = macroBarScaleThumbLayout(signedField, 3967, 100);
+		const bottom = macroBarScaleThumbLayout(signedField, -4096, 100);
+		expect(top.height).toBe(MACRO_BAR_SCALE_MIN_THUMB_PX);
+		expect(top.top).toBe(0);
+		expect(bottom.top + bottom.height).toBe(100);
+		expect(macroBarScaleThumbT(signedField, 3967)).toBe(1);
+		expect(macroBarScaleThumbT(signedField, -4096)).toBe(0);
+	});
+
+	it('pans the window when painting past the row edge', () => {
+		expect(panMacroBarViewMin(signedField, -64, -1, 0, 100)).toBe(-63);
+		expect(panMacroBarViewMin(signedField, -64, 101, 0, 100)).toBe(-65);
+		expect(panMacroBarViewMin(signedField, -64, 50, 0, 100)).toBe(-64);
 	});
 });
 

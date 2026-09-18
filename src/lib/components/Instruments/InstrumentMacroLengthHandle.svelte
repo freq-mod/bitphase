@@ -16,8 +16,7 @@
 		onpointerdown,
 		onpointermove,
 		onpointerup,
-		onpointercancel,
-		onkeydown
+		onpointercancel
 	}: {
 		handleEl?: HTMLDivElement | null;
 		left: number;
@@ -30,7 +29,6 @@
 		onpointermove: (event: PointerEvent) => void;
 		onpointerup: (event: PointerEvent) => void;
 		onpointercancel: (event: PointerEvent) => void;
-		onkeydown: (event: KeyboardEvent) => void;
 	} = $props();
 
 	const stepLabel = $derived(sequenceLength === 1 ? 'step' : 'steps');
@@ -49,7 +47,7 @@
 	]}
 	style="left: {left}px; top: {top}px; width: {MACRO_LENGTH_HANDLE_WIDTH}px; height: {height}px"
 	role="slider"
-	tabindex="0"
+	tabindex="-1"
 	aria-orientation="horizontal"
 	aria-label="{label} length"
 	aria-valuemin={INSTRUMENT_MACRO_MIN_LENGTH}
@@ -59,8 +57,7 @@
 	{onpointerdown}
 	{onpointermove}
 	{onpointerup}
-	{onpointercancel}
-	{onkeydown}>
+	{onpointercancel}>
 	<div class="relative h-full w-full">
 		<div
 			class={[

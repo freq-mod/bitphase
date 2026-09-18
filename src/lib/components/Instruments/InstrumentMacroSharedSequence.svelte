@@ -5,7 +5,6 @@
 		INSTRUMENT_MACRO_MAX_LENGTH,
 		INSTRUMENT_MACRO_MIN_LENGTH,
 		instrumentMacroAccentColor,
-		normalizedToMacroValue,
 		setInstrumentMacroValue,
 		setSharedSequenceLength,
 		setSharedSequenceLoop,
@@ -16,18 +15,23 @@
 	} from '../../chips/base/instrument-macros';
 	import {
 		applyInstrumentMacroSequenceText,
-		applyMacroLengthKey,
-		applyMacroLoopKey,
 		cycleInstrumentMacroEnum,
 		formatInstrumentMacroValue,
 		instrumentMacroUsesBarChart,
+		integerFromMacroBarNormalized,
 		MACRO_BAR_INSET,
 		MACRO_LENGTH_HANDLE_WIDTH,
 		MACRO_LOOP_HANDLE_WIDTH,
+		clampMacroBarViewMin,
+		macroBarNeedsScroll,
+		macroBarViewMinForValues,
+		macroBarViewStep,
 		macroFieldRowHeight,
 		macroStepWidthPx,
+		panMacroBarViewMin,
 		scrollMacroHandleIntoView
 	} from './instrument-macro-ui';
+	import InstrumentMacroBarScaleScroll from './InstrumentMacroBarScaleScroll.svelte';
 	import InstrumentMacroFieldRow from './InstrumentMacroFieldRow.svelte';
 	import InstrumentMacroHoverTooltip from './InstrumentMacroHoverTooltip.svelte';
 	import InstrumentMacroLengthHandle from './InstrumentMacroLengthHandle.svelte';
@@ -88,6 +92,7 @@
 		return offsets;
 	});
 	const textFields = $derived(fields.filter(instrumentMacroUsesBarChart));
+	const scaleFields = $derived(fields.filter(macroBarNeedsScroll));
 	const sequenceWidth = $derived(stepWidthPx * sequenceLength);
 	const loopHandleLeft = $derived(stepWidthPx * loopIndex - MACRO_LOOP_HANDLE_WIDTH / 2);
 	const lengthHandleLeft = $derived(sequenceWidth);
@@ -110,6 +115,7 @@
 		accentColor: string;
 	} | null>(null);
 	let previousLength: number | null = null;
+	let viewMinOverride = $state<Record<string, number>>({});
 
 	$effect(() => {
 		const length = sequenceLength;
@@ -120,6 +126,30 @@
 
 	function fieldMacro(field: InstrumentMacroField): InstrumentMacro {
 		return macros[field.id] ?? { values: [field.defaultValue], loop: loopIndex };
+	}
+
+	function viewMinFor(field: InstrumentMacroField): number {
+		const override = viewMinOverride[field.id];
+		if (override !== undefined) return override;
+		return macroBarViewMinForValues(field, fieldMacro(field).values);
+	}
+
+	function setViewMin(field: InstrumentMacroField, viewMin: number): void {
+		viewMinOverride[field.id] = clampMacroBarViewMin(field, viewMin);
+	}
+
+	function panViewFromPointer(field: InstrumentMacroField, clientY: number): void {
+		const row = sequenceEl?.querySelector(`[data-shared-row="${CSS.escape(field.id)}"]`);
+		if (!(row instanceof HTMLElement)) return;
+		const rect = row.getBoundingClientRect();
+		const next = panMacroBarViewMin(
+			field,
+			viewMinFor(field),
+			clientY,
+			rect.top,
+			rect.bottom
+		);
+		if (next !== viewMinFor(field)) setViewMin(field, next);
 	}
 
 	function showTooltip(field: InstrumentMacroField, clientX: number, clientY: number): void {
@@ -197,7 +227,7 @@
 			0,
 			Math.min(1, 1 - (clientY - rect.top - MACRO_BAR_INSET) / innerHeight)
 		);
-		return normalizedToMacroValue(normalized, field);
+		return integerFromMacroBarNormalized(field, normalized, viewMinFor(field));
 	}
 
 	function setValue(
@@ -234,6 +264,7 @@
 		paintFromY = fromY;
 		if (fromY) {
 			paintValue = null;
+			panViewFromPointer(field, event.clientY);
 			const value = integerFromClientY(field, event.clientY);
 			setValue(field, index, value);
 			showStepTooltip(field, index, value, event.clientX, event.clientY);
@@ -262,6 +293,7 @@
 		if (paintFromY) {
 			const field = fields.find((item) => item.id === paintFieldId);
 			if (!field) return;
+			panViewFromPointer(field, clientY);
 			setValue(field, index, integerFromClientY(field, clientY));
 			return;
 		}
@@ -377,19 +409,21 @@
 		applyLengthFromClientX(event.clientX);
 	}
 
-	function handleLoopKeydown(event: KeyboardEvent): void {
-		const next = applyMacroLoopKey(event, loopIndex, sequenceLength - 1);
-		if (next !== null) setLoop(next);
-	}
-
-	function handleLengthKeydown(event: KeyboardEvent): void {
-		const next = applyMacroLengthKey(event, sequenceLength);
-		if (next !== null) setLength(next);
-	}
-
 	function commitSequenceText(field: InstrumentMacroField, text: string): void {
 		const next = applyInstrumentMacroSequenceText(macros, fields, field, text, asHex);
 		if (next && next !== macros) onChange(next);
+	}
+
+	function handleWheel(event: WheelEvent): void {
+		if (Math.abs(event.deltaX) > Math.abs(event.deltaY)) return;
+		const field = fieldFromClientY(event.clientY);
+		if (!field || !macroBarNeedsScroll(field)) return;
+		event.preventDefault();
+		const step = Math.max(
+			macroBarViewStep(field),
+			Math.round(Math.abs(event.deltaY) / 24)
+		);
+		setViewMin(field, viewMinFor(field) - Math.sign(event.deltaY) * step);
 	}
 </script>
 
@@ -417,60 +451,79 @@
 		onRemoveStep={() => setLength(sequenceLength - 1)}
 		onAddStep={() => setLength(sequenceLength + 1)} />
 
-	<div bind:this={scrollerEl} class="min-w-0 overflow-x-auto overflow-y-hidden pr-2">
+	<div class="flex min-w-0 items-stretch">
 		<div
-			bind:this={sequenceEl}
-			class="relative w-fit"
-			style="width: {Math.max(sequenceWidth, lengthHandleLeft + MACRO_LENGTH_HANDLE_WIDTH)}px"
-			role="group"
-			aria-label="{label} sequence"
-			onpointermove={handlePointerMove}
-			onpointerup={stopDrag}
-			onpointercancel={stopDrag}>
-			{#each rowDividerOffsets as top (top)}
-				<div
-					class="pointer-events-none absolute left-0 z-[5] h-px bg-[var(--color-app-border)]"
-					style="top: {top}px; width: {sequenceWidth}px">
-				</div>
-			{/each}
-			{#each fields as field (field.id)}
-				<InstrumentMacroFieldRow
-					{field}
-					values={fieldMacro(field).values}
-					{stepWidthPx}
-					rowHeight={macroFieldRowHeight(field, isExpanded)}
-					{isExpanded}
-					onPaintStart={(index, event, fromY) =>
-						beginPaint(field, index, event, fromY)}
-					{onStepClick}
-					{isStepEnabled} />
-			{/each}
-			<InstrumentMacroLoopHandle
-				bind:handleEl={loopHandleEl}
-				left={loopHandleLeft}
-				height={stackHeight}
-				{loopIndex}
-				maxIndex={Math.max(0, sequenceLength - 1)}
-				{label}
-				isDragging={isDraggingLoop}
-				onpointerdown={handleLoopPointerDown}
+			bind:this={scrollerEl}
+			class="min-w-0 flex-1 overflow-x-auto overflow-y-hidden pr-2">
+			<div
+				bind:this={sequenceEl}
+				class="relative w-fit"
+				style="width: {Math.max(sequenceWidth, lengthHandleLeft + MACRO_LENGTH_HANDLE_WIDTH)}px"
+				role="group"
+				aria-label="{label} sequence"
 				onpointermove={handlePointerMove}
 				onpointerup={stopDrag}
 				onpointercancel={stopDrag}
-				onkeydown={handleLoopKeydown} />
-			<InstrumentMacroLengthHandle
-				bind:handleEl={lengthHandleEl}
-				left={lengthHandleLeft}
-				height={lengthHandleHeight}
-				{sequenceLength}
-				{label}
-				isDragging={isDraggingLength}
-				onpointerdown={handleLengthPointerDown}
-				onpointermove={handlePointerMove}
-				onpointerup={stopDrag}
-				onpointercancel={stopDrag}
-				onkeydown={handleLengthKeydown} />
+				onwheel={handleWheel}>
+				{#each rowDividerOffsets as top (top)}
+					<div
+						class="pointer-events-none absolute left-0 z-[5] h-px bg-[var(--color-app-border)]"
+						style="top: {top}px; width: {sequenceWidth}px">
+					</div>
+				{/each}
+				{#each fields as field (field.id)}
+					<InstrumentMacroFieldRow
+						{field}
+						values={fieldMacro(field).values}
+						{stepWidthPx}
+						rowHeight={macroFieldRowHeight(field, isExpanded)}
+						viewMin={viewMinFor(field)}
+						{isExpanded}
+						onPaintStart={(index, event, fromY) =>
+							beginPaint(field, index, event, fromY)}
+						{onStepClick}
+						{isStepEnabled} />
+				{/each}
+				<InstrumentMacroLoopHandle
+					bind:handleEl={loopHandleEl}
+					left={loopHandleLeft}
+					height={stackHeight}
+					{loopIndex}
+					maxIndex={Math.max(0, sequenceLength - 1)}
+					{label}
+					isDragging={isDraggingLoop}
+					onpointerdown={handleLoopPointerDown}
+					onpointermove={handlePointerMove}
+					onpointerup={stopDrag}
+					onpointercancel={stopDrag} />
+				<InstrumentMacroLengthHandle
+					bind:handleEl={lengthHandleEl}
+					left={lengthHandleLeft}
+					height={lengthHandleHeight}
+					{sequenceLength}
+					{label}
+					isDragging={isDraggingLength}
+					onpointerdown={handleLengthPointerDown}
+					onpointermove={handlePointerMove}
+					onpointerup={stopDrag}
+					onpointercancel={stopDrag} />
+			</div>
 		</div>
+		{#if scaleFields.length > 0}
+			<div
+				class="relative w-10 min-w-10 shrink-0 self-stretch border-l border-[var(--color-app-border)]/40"
+				style="height: {stackHeight}px">
+				<div class="absolute inset-0 flex min-h-0 flex-col">
+					{#each scaleFields as field (field.id)}
+						<InstrumentMacroBarScaleScroll
+							{field}
+							viewMin={viewMinFor(field)}
+							{asHex}
+							onViewMinChange={(next) => setViewMin(field, next)} />
+					{/each}
+				</div>
+			</div>
+		{/if}
 	</div>
 	{#if textFields.length > 0}
 		<div class="flex flex-col gap-1 px-2 pt-1 pb-2">

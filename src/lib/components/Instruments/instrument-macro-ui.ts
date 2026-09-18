@@ -4,7 +4,6 @@ import {
 	clampMacroValue,
 	INSTRUMENT_MACRO_MAX_LENGTH,
 	INSTRUMENT_MACRO_MIN_LENGTH,
-	macroValueToNormalized,
 	setSharedSequenceLength,
 	setSharedSequenceLoop,
 	type InstrumentMacroField,
@@ -16,6 +15,11 @@ import { formatRowEditorNumber, parseRowEditorNumericText } from '../../utils/ro
 export const MACRO_LOOP_HANDLE_WIDTH = 12;
 export const MACRO_LENGTH_HANDLE_WIDTH = 16;
 export const MACRO_BAR_INSET = 3;
+export const MACRO_BAR_VISIBLE_SPAN = 128;
+export const MACRO_BAR_SCALE_MIN_THUMB_PX = 8;
+export const MACRO_BAR_SCALE_CENTER_SNAP_PX = 8;
+export const MACRO_BAR_SCALE_CENTER_HOLD_PX = 14;
+export const MACRO_BAR_SCALE_CENTER_HOLD_MOVES = 2;
 
 export type ParsedMacroSequenceText = {
 	values: InstrumentMacroValue[];
@@ -40,7 +44,7 @@ export function instrumentMacroUsesSquareSteps(field: InstrumentMacroField): boo
 }
 
 export function macroFieldRowHeight(field: InstrumentMacroField, isExpanded: boolean): number {
-	if (instrumentMacroUsesBarChart(field)) return isExpanded ? 124 : 100;
+	if (instrumentMacroUsesBarChart(field)) return isExpanded ? 168 : 140;
 	if (instrumentMacroUsesSquareSteps(field)) return isExpanded ? 36 : 30;
 	if (field.kind === 'waveform') return isExpanded ? 48 : 38;
 	return isExpanded ? 28 : 22;
@@ -95,58 +99,325 @@ export function formatInstrumentMacroValue(
 	return formatRowEditorNumber(Number(value), asHex);
 }
 
+export function macroBarNumericRange(field: InstrumentMacroField): { min: number; max: number } {
+	return {
+		min: field.min ?? 0,
+		max: field.max ?? 1
+	};
+}
+
+export function macroBarVisibleSpan(field: InstrumentMacroField): number {
+	const { min, max } = macroBarNumericRange(field);
+	const range = max - min;
+	if (range <= 0) return 1;
+	return Math.min(MACRO_BAR_VISIBLE_SPAN, range);
+}
+
+export function macroBarNeedsScroll(field: InstrumentMacroField): boolean {
+	if (!instrumentMacroUsesBarChart(field)) return false;
+	const { min, max } = macroBarNumericRange(field);
+	return max - min > MACRO_BAR_VISIBLE_SPAN;
+}
+
+export function clampMacroBarViewMin(field: InstrumentMacroField, viewMin: number): number {
+	const { min, max } = macroBarNumericRange(field);
+	const span = macroBarVisibleSpan(field);
+	return Math.max(min, Math.min(max - span, Math.round(viewMin)));
+}
+
+export function defaultMacroBarViewMin(field: InstrumentMacroField): number {
+	const { min, max } = macroBarNumericRange(field);
+	const span = macroBarVisibleSpan(field);
+	if (min < 0 && max > 0) {
+		return clampMacroBarViewMin(field, -Math.floor(span / 2));
+	}
+	return min;
+}
+
+export function macroBarViewMinForValues(
+	field: InstrumentMacroField,
+	values: readonly InstrumentMacroValue[]
+): number {
+	const fallback = defaultMacroBarViewMin(field);
+	if (!macroBarNeedsScroll(field) || values.length === 0) return fallback;
+	const span = macroBarVisibleSpan(field);
+	const nums = values.map((value) => Number(value)).filter((value) => Number.isFinite(value));
+	if (nums.length === 0) return fallback;
+	const lo = Math.min(...nums);
+	const hi = Math.max(...nums);
+	if (lo >= fallback && hi <= fallback + span) return fallback;
+	return clampMacroBarViewMin(field, (lo + hi) / 2 - span / 2);
+}
+
+export function macroBarViewStep(field: InstrumentMacroField): number {
+	return Math.max(1, Math.round(macroBarVisibleSpan(field) / 16));
+}
+
+export function integerFromMacroBarNormalized(
+	field: InstrumentMacroField,
+	normalized: number,
+	viewMin: number
+): InstrumentMacroValue {
+	const span = macroBarVisibleSpan(field);
+	const clamped = Math.max(0, Math.min(1, normalized));
+	return clampMacroValue(Math.round(viewMin + clamped * span), field);
+}
+
+export function macroBarZeroNormalized(
+	field: InstrumentMacroField,
+	viewMin: number
+): number | null {
+	if (field.min === undefined || field.max === undefined || field.min >= 0 || field.max <= 0) {
+		return null;
+	}
+	const span = macroBarVisibleSpan(field);
+	const zero = (0 - viewMin) / span;
+	if (zero < 0 || zero > 1) return null;
+	return zero;
+}
+
+export function macroBarViewMinFromTrackY(
+	field: InstrumentMacroField,
+	normalizedFromTop: number
+): number {
+	const span = macroBarVisibleSpan(field);
+	const { min, max } = macroBarNumericRange(field);
+	const scrollable = Math.max(0, max - min - span);
+	const t = Math.max(0, Math.min(1, normalizedFromTop));
+	return clampMacroBarViewMin(field, min + (1 - t) * scrollable);
+}
+
+export function macroBarScaleThumbRatio(field: InstrumentMacroField): number {
+	const span = macroBarVisibleSpan(field);
+	const { min, max } = macroBarNumericRange(field);
+	return span / Math.max(span, max - min);
+}
+
+export function macroBarScaleThumbT(field: InstrumentMacroField, viewMin: number): number {
+	const span = macroBarVisibleSpan(field);
+	const { min, max } = macroBarNumericRange(field);
+	const scrollable = Math.max(0, max - min - span);
+	if (scrollable <= 0) return 0;
+	return (clampMacroBarViewMin(field, viewMin) - min) / scrollable;
+}
+
+export function macroBarScaleThumbLayout(
+	field: InstrumentMacroField,
+	viewMin: number,
+	trackHeight: number,
+	minThumbPx = MACRO_BAR_SCALE_MIN_THUMB_PX
+): { top: number; height: number } {
+	const height = Math.min(
+		trackHeight,
+		Math.max(minThumbPx, macroBarScaleThumbRatio(field) * trackHeight)
+	);
+	const top = (1 - macroBarScaleThumbT(field, viewMin)) * (trackHeight - height);
+	return { top, height };
+}
+
+export function macroBarScaleCenterViewMin(field: InstrumentMacroField): number {
+	const { min, max } = macroBarNumericRange(field);
+	const span = macroBarVisibleSpan(field);
+	if (min < 0 && max > 0) return defaultMacroBarViewMin(field);
+	return clampMacroBarViewMin(field, (min + max - span) / 2);
+}
+
+export function macroBarScaleCenterT(field: InstrumentMacroField): number {
+	return macroBarScaleThumbT(field, macroBarScaleCenterViewMin(field));
+}
+
+export function snapMacroBarViewMinToCenterTick(
+	field: InstrumentMacroField,
+	viewMin: number,
+	pointerY: number,
+	trackTop: number,
+	trackHeight: number
+): number {
+	const next = clampMacroBarViewMin(field, viewMin);
+	if (
+		macroBarScalePointerNearCenter(
+			field,
+			pointerY,
+			trackTop,
+			trackHeight,
+			MACRO_BAR_SCALE_CENTER_SNAP_PX
+		)
+	) {
+		return macroBarScaleCenterViewMin(field);
+	}
+	return next;
+}
+
+export function macroBarScaleThumbCenterY(
+	field: InstrumentMacroField,
+	viewMin: number,
+	trackTop: number,
+	trackHeight: number
+): number {
+	const layout = macroBarScaleThumbLayout(field, viewMin, trackHeight);
+	return trackTop + layout.top + layout.height / 2;
+}
+
+export function macroBarScaleCenterPointerY(
+	field: InstrumentMacroField,
+	trackTop: number,
+	trackHeight: number
+): number {
+	return macroBarScaleThumbCenterY(
+		field,
+		macroBarScaleCenterViewMin(field),
+		trackTop,
+		trackHeight
+	);
+}
+
+export function macroBarScaleThumbNearCenter(
+	field: InstrumentMacroField,
+	viewMin: number,
+	trackHeight: number,
+	radiusPx = MACRO_BAR_SCALE_CENTER_SNAP_PX
+): boolean {
+	const centerY = macroBarScaleThumbCenterY(
+		field,
+		macroBarScaleCenterViewMin(field),
+		0,
+		trackHeight
+	);
+	const thumbY = macroBarScaleThumbCenterY(field, viewMin, 0, trackHeight);
+	return Math.abs(thumbY - centerY) <= radiusPx;
+}
+
+export function macroBarScaleShouldCatchCenter(
+	field: InstrumentMacroField,
+	fromViewMin: number,
+	nextViewMin: number
+): boolean {
+	const center = macroBarScaleCenterViewMin(field);
+	if (fromViewMin === center) return false;
+	const next = clampMacroBarViewMin(field, nextViewMin);
+	return (fromViewMin - center) * (next - center) <= 0;
+}
+
+export function macroBarScaleShouldHoldCenter(travelPx: number, holdMoves: number): boolean {
+	return (
+		holdMoves < MACRO_BAR_SCALE_CENTER_HOLD_MOVES ||
+		travelPx <= MACRO_BAR_SCALE_CENTER_HOLD_PX
+	);
+}
+
+export function macroBarScalePointerNearCenter(
+	field: InstrumentMacroField,
+	pointerY: number,
+	trackTop: number,
+	trackHeight: number,
+	radiusPx: number
+): boolean {
+	return (
+		Math.abs(pointerY - macroBarScaleCenterPointerY(field, trackTop, trackHeight)) <= radiusPx
+	);
+}
+
+export function macroBarScaleUnitsPerPx(
+	field: InstrumentMacroField,
+	trackHeight: number
+): number {
+	const span = macroBarVisibleSpan(field);
+	const { min, max } = macroBarNumericRange(field);
+	return Math.max(0, max - min - span) / Math.max(1, trackHeight);
+}
+
+export function macroBarViewMinFromDragDelta(
+	field: InstrumentMacroField,
+	grabViewMin: number,
+	grabY: number,
+	pointerY: number,
+	trackHeight: number
+): number {
+	return clampMacroBarViewMin(
+		field,
+		grabViewMin + (grabY - pointerY) * macroBarScaleUnitsPerPx(field, trackHeight)
+	);
+}
+
+export function macroBarScaleUnsnapFromCenter(
+	field: InstrumentMacroField,
+	pointerY: number,
+	centerY: number
+): number {
+	const center = macroBarScaleCenterViewMin(field);
+	return clampMacroBarViewMin(field, center + (pointerY < centerY ? 1 : -1));
+}
+
+export function snapMacroBarViewMinCrossingCenter(
+	field: InstrumentMacroField,
+	fromViewMin: number,
+	viewMin: number
+): number {
+	const center = macroBarScaleCenterViewMin(field);
+	const next = clampMacroBarViewMin(field, viewMin);
+	if (fromViewMin === center) return next;
+	if ((fromViewMin - center) * (next - center) <= 0) return center;
+	return next;
+}
+
+export function panMacroBarViewMin(
+	field: InstrumentMacroField,
+	viewMin: number,
+	clientY: number,
+	rowTop: number,
+	rowBottom: number
+): number {
+	if (!macroBarNeedsScroll(field)) return viewMin;
+	if (clientY < rowTop) return clampMacroBarViewMin(field, viewMin + 1);
+	if (clientY > rowBottom) return clampMacroBarViewMin(field, viewMin - 1);
+	return viewMin;
+}
+
+export type MacroBarOverflow = 'up' | 'down' | null;
+
+export function macroBarOverflowDirection(
+	field: InstrumentMacroField,
+	value: InstrumentMacroValue,
+	viewMin = defaultMacroBarViewMin(field)
+): MacroBarOverflow {
+	const span = macroBarVisibleSpan(field);
+	const n = Number(value);
+	const signed =
+		field.min !== undefined && field.max !== undefined && field.min < 0 && field.max > 0;
+	const valueNorm = (n - viewMin) / span;
+	if (!signed) {
+		if (valueNorm > 1) return null;
+		if (valueNorm <= 0) return n > 0 || viewMin > (field.min ?? 0) ? 'down' : null;
+		return null;
+	}
+	const zeroNorm = (0 - viewMin) / span;
+	const bottomNorm = Math.max(0, Math.min(1, Math.min(valueNorm, zeroNorm)));
+	const topNorm = Math.max(0, Math.min(1, Math.max(valueNorm, zeroNorm)));
+	if (topNorm - bottomNorm > 0 || (valueNorm >= 0 && valueNorm <= 1)) return null;
+	return n >= viewMin + span ? 'up' : 'down';
+}
+
 export function integerMacroBarStyle(
 	field: InstrumentMacroField,
 	value: InstrumentMacroValue,
-	accent: string
+	accent: string,
+	viewMin = defaultMacroBarViewMin(field)
 ): string {
-	const normalized = Math.max(0, Math.min(1, macroValueToNormalized(value, field)));
+	const span = macroBarVisibleSpan(field);
 	const signed =
 		field.min !== undefined && field.max !== undefined && field.min < 0 && field.max > 0;
 	const range = `100% - ${MACRO_BAR_INSET * 2}px`;
+	const valueNorm = (Number(value) - viewMin) / span;
 	if (!signed) {
-		return `bottom: ${MACRO_BAR_INSET}px; left: 2px; right: 2px; height: calc((${range}) * ${normalized}); background: ${accent}`;
+		const heightNorm = Math.max(0, Math.min(1, valueNorm));
+		return `bottom: ${MACRO_BAR_INSET}px; left: 2px; right: 2px; height: calc((${range}) * ${heightNorm}); background: ${accent}`;
 	}
-	const zero = Math.max(0, Math.min(1, macroValueToNormalized(0, field)));
-	const bottomNorm = Math.min(normalized, zero);
-	const heightNorm = Math.max(Math.abs(normalized - zero), 0.01);
+	const zeroNorm = (0 - viewMin) / span;
+	const bottomNorm = Math.max(0, Math.min(1, Math.min(valueNorm, zeroNorm)));
+	const topNorm = Math.max(0, Math.min(1, Math.max(valueNorm, zeroNorm)));
+	const inView = valueNorm >= 0 && valueNorm <= 1;
+	const heightNorm = Math.max(topNorm - bottomNorm, inView ? 0.01 : 0);
 	return `bottom: calc(${MACRO_BAR_INSET}px + (${range}) * ${bottomNorm}); left: 2px; right: 2px; height: calc((${range}) * ${heightNorm}); background: ${accent}`;
-}
-
-export function applyMacroLoopKey(
-	event: KeyboardEvent,
-	loopIndex: number,
-	maxIndex: number
-): number | null {
-	if (event.key === 'ArrowLeft' || event.key === 'ArrowDown') {
-		event.preventDefault();
-		return loopIndex - 1;
-	}
-	if (event.key === 'ArrowRight' || event.key === 'ArrowUp') {
-		event.preventDefault();
-		return loopIndex + 1;
-	}
-	if (event.key === 'Home') {
-		event.preventDefault();
-		return 0;
-	}
-	if (event.key === 'End') {
-		event.preventDefault();
-		return maxIndex;
-	}
-	return null;
-}
-
-export function applyMacroLengthKey(event: KeyboardEvent, length: number): number | null {
-	if (event.key === 'ArrowLeft' || event.key === 'ArrowDown') {
-		event.preventDefault();
-		return length - 1;
-	}
-	if (event.key === 'ArrowRight' || event.key === 'ArrowUp') {
-		event.preventDefault();
-		return length + 1;
-	}
-	return null;
 }
 
 export function formatMacroSequenceText(
