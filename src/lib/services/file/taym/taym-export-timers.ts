@@ -22,6 +22,7 @@ import {
 	NO_LOOP,
 	SRC_BIND_LANE,
 	TLAN_NONE,
+	TLAN_UNCHANGED,
 	TM_ABSOLUTE,
 	toFix16,
 	VT_U8
@@ -55,6 +56,8 @@ type ChannelEffectConfig = {
 	ownedRegisters: number[];
 	setKey: string;
 	periodKey: string;
+	shapeKey: string;
+	resetPhase: boolean;
 };
 
 type Pools = {
@@ -83,10 +86,11 @@ function collectStepSources(
 	channelIndex: number,
 	frame: SongCaptureFrame,
 	chipVariant: AyChipVariant
-): { sources: TimerEffectStepSource[]; setKey: string; periodKey: string } {
+): { sources: TimerEffectStepSource[]; setKey: string; periodKey: string; resetPhase: boolean } {
 	const sources: TimerEffectStepSource[] = [];
 	const setKeys: string[] = [];
 	const periodKeys: string[] = [];
+	let resetPhase = false;
 
 	const syncbuzzer = frame.syncbuzzer?.[channelIndex];
 	if (syncbuzzer?.enabled) {
@@ -94,6 +98,7 @@ function collectStepSources(
 		sources.push(syncBuzzerStepSource(state));
 		setKeys.push(`sync:${state.waveform.join(',')}:${state.waveformLoop}`);
 		periodKeys.push(`${state.period}:${state.periodLow}`);
+		resetPhase ||= !!state.resetPhase;
 	}
 
 	const sid = frame.sid?.[channelIndex];
@@ -102,6 +107,7 @@ function collectStepSources(
 		sources.push(sidStepSource(channelIndex, state, chipVariant));
 		setKeys.push(`sid:${state.baseVolume}:${state.waveform.join(',')}:${state.waveformLoop}`);
 		periodKeys.push(`${state.period}:${state.periodLow}`);
+		resetPhase ||= !!state.resetPhase;
 	}
 
 	const fm = frame.fm?.[channelIndex];
@@ -112,6 +118,7 @@ function collectStepSources(
 			`fm:${state.baseTonePeriod}:${state.fmOffsetMode}:${state.waveform.join(',')}:${state.waveformLoop}`
 		);
 		periodKeys.push(`${state.period}:${state.periodLow}`);
+		resetPhase ||= !!state.resetPhase;
 	}
 
 	const envFm = frame.envFm?.[channelIndex];
@@ -122,12 +129,14 @@ function collectStepSources(
 			`envfm:${state.baseEnvelopePeriod}:${state.fmOffsetMode}:${state.waveform.join(',')}:${state.waveformLoop}`
 		);
 		periodKeys.push(`${state.period}:${state.periodLow}`);
+		resetPhase ||= !!state.resetPhase;
 	}
 
 	return {
 		sources,
 		setKey: setKeys.join('|'),
-		periodKey: periodKeys.join('|')
+		periodKey: periodKeys.join('|'),
+		resetPhase
 	};
 }
 
@@ -136,7 +145,11 @@ function buildChannelConfig(
 	frame: SongCaptureFrame,
 	chipVariant: AyChipVariant
 ): ChannelEffectConfig | undefined {
-	const { sources, setKey, periodKey } = collectStepSources(channelIndex, frame, chipVariant);
+	const { sources, setKey, periodKey, resetPhase } = collectStepSources(
+		channelIndex,
+		frame,
+		chipVariant
+	);
 	if (sources.length === 0) {
 		return undefined;
 	}
@@ -150,7 +163,12 @@ function buildChannelConfig(
 			ownedRegisters.push(register);
 		}
 	}
-	return { steps, ownedRegisters, setKey, periodKey };
+	const shapeKey = `${ownedRegisters.join(',')}:${steps.length}:${stepsLoopIndex(steps)}`;
+	return { steps, ownedRegisters, setKey, periodKey, shapeKey, resetPhase };
+}
+
+function stepsLoopIndex(steps: MergedEffectStep[]): number {
+	return steps.length > 0 ? steps[steps.length - 1]!.nextIndex : 0;
 }
 
 function internValueLane(pools: Pools, values: number[], loopIndex: number): number {
@@ -186,7 +204,7 @@ function internActionSlice(
 	pools: Pools,
 	config: ChannelEffectConfig
 ): { firstAction: number; actionCount: number } {
-	const loopIndex = config.steps.length > 0 ? config.steps[config.steps.length - 1]!.nextIndex : 0;
+	const loopIndex = stepsLoopIndex(config.steps);
 	const laneRefs: Array<{ targetId: number; laneIndex: number }> = [];
 	for (const register of config.ownedRegisters) {
 		const values = config.steps.map(
@@ -207,16 +225,30 @@ function internActionSlice(
 	return { firstAction, actionCount: laneRefs.length };
 }
 
-function startMods(pools: Pools, config: ChannelEffectConfig): Mods {
-	const slice = internActionSlice(pools, config);
-	const loopIndex = config.steps.length > 0 ? config.steps[config.steps.length - 1]!.nextIndex : 0;
+function timerLaneFields(
+	pools: Pools,
+	config: ChannelEffectConfig
+): { baseTimerValue: number; timerLaneRef: number } {
 	const periods = config.steps.map((step) => step.period || 1);
-	const timerLaneRef = internTimerLane(pools, periods, loopIndex);
-	return makeMods(CMD_START, {
+	return {
 		baseTimerValue: pools.encodeTimerValue(periods[0] || 1),
-		timerLaneRef,
-		firstAction: slice.firstAction,
-		actionCount: slice.actionCount
+		timerLaneRef: internTimerLane(pools, periods, stepsLoopIndex(config.steps))
+	};
+}
+
+function startMods(pools: Pools, config: ChannelEffectConfig): Mods {
+	return makeMods(CMD_START, { ...timerLaneFields(pools, config), ...internActionSlice(pools, config) });
+}
+
+function modulateMods(
+	pools: Pools,
+	config: ChannelEffectConfig,
+	setChanged: boolean,
+	periodChanged: boolean
+): Mods {
+	return makeMods(CMD_MODULATE, {
+		...(periodChanged ? timerLaneFields(pools, config) : { timerLaneRef: TLAN_UNCHANGED }),
+		...(setChanged ? internActionSlice(pools, config) : {})
 	});
 }
 
@@ -282,15 +314,17 @@ export function buildTaymTimerTables(
 		const configs = channelConfigs[channelIndex]!;
 		let prevSetKey: string | undefined;
 		let prevPeriodKey: string | undefined;
+		let prevShapeKey: string | undefined;
 
 		for (let frame = 0; frame < frameCount; frame++) {
 			const config = configs[frame];
 			const modsIndex = frame * timerCount + timerIndex;
 
 			if (!config) {
-				mods[modsIndex] = makeMods(prevSetKey !== undefined ? CMD_STOP : CMD_EMPTY);
+				mods[modsIndex] = makeMods(prevShapeKey !== undefined ? CMD_STOP : CMD_EMPTY);
 				prevSetKey = undefined;
 				prevPeriodKey = undefined;
+				prevShapeKey = undefined;
 				continue;
 			}
 
@@ -298,25 +332,22 @@ export function buildTaymTimerTables(
 				ownedRegistersPerFrame[frame]!.push(register);
 			}
 
-			const setChanged = prevSetKey === undefined || prevSetKey !== config.setKey;
-			const periodChanged = prevPeriodKey !== undefined && prevPeriodKey !== config.periodKey;
+			const retrigger =
+				prevShapeKey === undefined || prevShapeKey !== config.shapeKey || config.resetPhase;
+			const setChanged = prevSetKey !== config.setKey;
+			const periodChanged = prevPeriodKey !== config.periodKey;
 
-			if (setChanged) {
+			if (retrigger) {
 				mods[modsIndex] = startMods(pools, config);
-			} else if (periodChanged) {
-				const loopIndex = config.steps[config.steps.length - 1]!.nextIndex;
-				const periods = config.steps.map((step) => step.period || 1);
-				const timerLaneRef = internTimerLane(pools, periods, loopIndex);
-				mods[modsIndex] = makeMods(CMD_MODULATE, {
-					baseTimerValue: pools.encodeTimerValue(periods[0] || 1),
-					timerLaneRef
-				});
+			} else if (setChanged || periodChanged) {
+				mods[modsIndex] = modulateMods(pools, config, setChanged, periodChanged);
 			} else {
 				mods[modsIndex] = makeMods(CMD_EMPTY);
 			}
 
 			prevSetKey = config.setKey;
 			prevPeriodKey = config.periodKey;
+			prevShapeKey = config.shapeKey;
 		}
 	}
 
