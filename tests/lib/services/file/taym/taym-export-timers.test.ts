@@ -96,6 +96,50 @@ describe('buildTaymTimerTables', () => {
 		expect(tables.mods[1 * nt].baseTimerValue).toBe(936);
 	});
 
+	function sidFrame(baseVolume: number, waveform: number[], resetPhase = false): SongCaptureFrame {
+		const frame = baseFrame();
+		frame.sid[0] = {
+			enabled: true,
+			pwm: false,
+			period: 500,
+			periodLow: 500,
+			baseVolume,
+			waveform,
+			waveformLoop: 0,
+			resetPhase
+		};
+		return frame;
+	}
+
+	it('emits MODULATE with new value lanes when only the volume changes in a note', () => {
+		const frames = [sidFrame(15, [15, 0]), sidFrame(14, [15, 0]), sidFrame(14, [15, 0])];
+		const tables = buildTaymTimerTables(frames);
+		const nt = tables.timers.length;
+		const cmds = frames.map((_f, frame) => tables.mods[frame * nt].command);
+		expect(cmds).toEqual([spec.CMD_START, spec.CMD_MODULATE, spec.CMD_EMPTY]);
+		const modulate = tables.mods[1 * nt];
+		expect(modulate.timerLaneRef).toBe(spec.TLAN_UNCHANGED);
+		expect(modulate.baseTimerValue).toBe(0);
+		expect(modulate.actionCount).toBe(1);
+		expect(tables.actions[modulate.firstAction].operand).not.toBe(
+			tables.actions[tables.mods[0].firstAction].operand
+		);
+	});
+
+	it('emits START when playback resets the timer phase', () => {
+		const frames = [sidFrame(15, [15, 0]), sidFrame(15, [15, 0], true)];
+		const tables = buildTaymTimerTables(frames);
+		const nt = tables.timers.length;
+		expect(tables.mods[1 * nt].command).toBe(spec.CMD_START);
+	});
+
+	it('emits START when the lane shape changes', () => {
+		const frames = [sidFrame(15, [15, 0]), sidFrame(15, [15, 7, 0])];
+		const tables = buildTaymTimerTables(frames);
+		const nt = tables.timers.length;
+		expect(tables.mods[1 * nt].command).toBe(spec.CMD_START);
+	});
+
 	it('owns the volume register for a SID channel', () => {
 		const frame = baseFrame();
 		frame.sid[0] = {

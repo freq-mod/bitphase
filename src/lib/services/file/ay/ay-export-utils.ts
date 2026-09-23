@@ -34,6 +34,7 @@ type TimerEffectRegisterState = {
 	fmOffsetMode?: 'semitone' | 'period' | number;
 	waveform?: number[];
 	waveformLoop?: number;
+	resetPhase?: boolean;
 };
 
 export type HardwareSidState = {
@@ -44,6 +45,7 @@ export type HardwareSidState = {
 	baseVolume: number;
 	waveform: number[];
 	waveformLoop: number;
+	resetPhase?: boolean;
 };
 
 export type HardwareSyncBuzzerState = {
@@ -53,6 +55,7 @@ export type HardwareSyncBuzzerState = {
 	periodLow: number;
 	waveform: number[];
 	waveformLoop: number;
+	resetPhase?: boolean;
 };
 
 export type HardwareFmState = {
@@ -64,6 +67,7 @@ export type HardwareFmState = {
 	fmOffsetMode: 'semitone' | 'period';
 	waveform: number[];
 	waveformLoop: number;
+	resetPhase?: boolean;
 };
 
 export type HardwareEnvFmState = {
@@ -75,6 +79,7 @@ export type HardwareEnvFmState = {
 	fmOffsetMode: 'semitone' | 'period';
 	waveform: number[];
 	waveformLoop: number;
+	resetPhase?: boolean;
 };
 
 export type HardwareSampleState = {
@@ -550,7 +555,8 @@ export function extractHardwareSidStates(registerState: {
 			periodLow: timerEffect?.periodLow ?? timerEffect?.period ?? 0,
 			baseVolume: timerEffect?.baseVolume ?? 0,
 			waveform: [...(timerEffect?.waveform ?? [15, 0])],
-			waveformLoop: timerEffect?.waveformLoop ?? 0
+			waveformLoop: timerEffect?.waveformLoop ?? 0,
+			resetPhase: enabled && !!timerEffect.resetPhase
 		});
 	}
 	return result;
@@ -574,7 +580,8 @@ export function extractHardwareSyncBuzzerStates(registerState: {
 			period: timerEffect?.period ?? 0,
 			periodLow: timerEffect?.periodLow ?? timerEffect?.period ?? 0,
 			waveform: [...(timerEffect?.waveform ?? [0])],
-			waveformLoop: timerEffect?.waveformLoop ?? 0
+			waveformLoop: timerEffect?.waveformLoop ?? 0,
+			resetPhase: enabled && !!timerEffect.resetPhase
 		});
 	}
 	return result;
@@ -600,7 +607,8 @@ export function extractHardwareFmStates(registerState: {
 			baseTonePeriod: Math.max(1, timerEffect?.baseTonePeriod ?? 1),
 			fmOffsetMode,
 			waveform: [...(timerEffect?.waveform ?? [0, 7])],
-			waveformLoop: timerEffect?.waveformLoop ?? 0
+			waveformLoop: timerEffect?.waveformLoop ?? 0,
+			resetPhase: enabled && !!timerEffect.resetPhase
 		});
 	}
 	return result;
@@ -627,7 +635,8 @@ export function extractHardwareEnvFmStates(registerState: {
 			baseEnvelopePeriod: Math.max(1, timerEffect?.baseTonePeriod ?? 1),
 			fmOffsetMode,
 			waveform: [...(timerEffect?.waveform ?? [0, 7])],
-			waveformLoop: timerEffect?.waveformLoop ?? 0
+			waveformLoop: timerEffect?.waveformLoop ?? 0,
+			resetPhase: enabled && !!timerEffect.resetPhase
 		});
 	}
 	return result;
