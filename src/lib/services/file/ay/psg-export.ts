@@ -9,6 +9,7 @@ import {
 	createDisabledTaymSampleStates,
 	createTaymSampleCaptureTracker,
 	suppressSidForTaymSampleChannels,
+	type TaymSampleCaptureTracker,
 	extractHardwareEnvFmStates,
 	extractHardwareFmStates,
 	extractHardwareSampleStates,
@@ -55,6 +56,23 @@ export type PsgExportModules = {
 
 export type CaptureRegisterOptions = {
 	captureDigiSamples?: boolean;
+};
+
+type AyCaptureTick = {
+	state: any;
+	patternProcessor: any;
+	audioDriver: any;
+	registerState: any;
+	mixer: any;
+	patterns: any[];
+	chipFrequency: number;
+	frames: SongCaptureFrame[];
+	orderIndices: number[];
+	taymSampleTracker: TaymSampleCaptureTracker;
+	captureDigiSamples: boolean;
+	samplesPerInterrupt: number;
+	instrumentHasSample?: PsgExportModules['instrumentHasSample'];
+	advanceSamplePosition?: PsgExportModules['advanceSamplePosition'];
 };
 
 export function encodePSG(registerFrames: number[][]): ArrayBuffer {
@@ -158,106 +176,63 @@ class PsgExportService {
 		return flags;
 	}
 
-	private async captureRegisterStates(
-		state: any,
-		patternProcessor: any,
-		audioDriver: any,
-		registerState: any,
-		mixer: any,
-		song: any,
-		totalRows: number,
-		patterns: any[],
-		modules: PsgExportModules,
-		captureOptions: CaptureRegisterOptions,
-		chipFrequency: number,
-		onProgress?: (progress: number, message: string) => void
-	): Promise<{ frames: SongCaptureFrame[]; orderIndices: number[] }> {
-		const captureFrames: SongCaptureFrame[] = [];
-		const orderIndices: number[] = [];
-		const taymSampleTracker = createTaymSampleCaptureTracker();
-		let totalTicks = 0;
-		const maxTicks = 1000000;
-		const captureDigiSamples = captureOptions.captureDigiSamples === true;
-		const instrumentHasSample = modules.instrumentHasSample;
-		const advanceSamplePosition = modules.advanceSamplePosition;
-		const samplesPerInterrupt = Math.max(
-			1,
-			Math.round(CAPTURE_OUTPUT_SAMPLE_RATE / (song.interruptFrequency ?? 50))
-		);
+	private pushCaptureFrame(tick: AyCaptureTick): void {
+		const {
+			state,
+			patternProcessor,
+			audioDriver,
+			registerState,
+			mixer,
+			chipFrequency,
+			frames,
+			orderIndices,
+			taymSampleTracker,
+			captureDigiSamples,
+			samplesPerInterrupt,
+			instrumentHasSample,
+			advanceSamplePosition
+		} = tick;
 
-		let lastProgressUpdate = 0;
-		const progressUpdateInterval = 1000;
-		let lastProgressTime = Date.now();
-		const minProgressUpdateMs = 100;
+		if (state.timeline.currentTick === 0 && state.currentPattern) {
+			patternProcessor.parsePatternRow(
+				state.currentPattern,
+				state.timeline.currentRow,
+				registerState
+			);
+			patternProcessor.processSpeedTable();
+		}
 
-		onProgress?.(50, 'Capturing register states...');
+		patternProcessor.processTables();
+		patternProcessor.processArpeggio();
+		patternProcessor.processEffectTables();
+		audioDriver.processInstruments(state, registerState);
+		patternProcessor.processVibrato();
+		const sampleRestartFlags = this.readSampleRestartFlags(state);
+		patternProcessor.processSlides();
 
-		while (totalTicks < maxTicks) {
-			const now = Date.now();
-			if (
-				(totalTicks - lastProgressUpdate >= progressUpdateInterval ||
-					now - lastProgressTime >= minProgressUpdateMs) &&
-				totalTicks > 0
-			) {
-				let currentRow = 0;
-				for (let i = 0; i < state.timeline.currentPatternOrderIndex; i++) {
-					const patternId = state.timeline.patternOrder[i];
-					const pattern = song.patterns.find((p: any) => p.id === patternId);
-					if (pattern) {
-						currentRow += pattern.length;
-					}
-				}
-				if (state.currentPattern) {
-					currentRow += state.timeline.currentRow;
-				}
-				const captureProgress = (currentRow / totalRows) * 50;
-				const progress = 50 + captureProgress;
-				const message = `Capturing... ${currentRow}/${totalRows} rows`;
-				onProgress?.(progress, message);
-				lastProgressUpdate = totalTicks;
-				lastProgressTime = now;
-				await new Promise((resolve) => setTimeout(resolve, 0));
-			}
-
-			if (state.timeline.currentTick === 0 && state.currentPattern) {
-				patternProcessor.parsePatternRow(
-					state.currentPattern,
-					state.timeline.currentRow,
-					registerState
-				);
-				patternProcessor.processSpeedTable();
-			}
-
-			patternProcessor.processTables();
-			patternProcessor.processArpeggio();
-			patternProcessor.processEffectTables();
-			audioDriver.processInstruments(state, registerState);
-			patternProcessor.processVibrato();
-			const sampleRestartFlags = this.readSampleRestartFlags(state);
-			patternProcessor.processSlides();
-
-			const stateToConvert = mixer.hasVirtualChannels()
-				? mixer.merge(registerState, state)
-				: registerState;
-			const ayRegisters = convertRegisterStateToAYRegisters(stateToConvert);
-			const sample = captureDigiSamples
-				? extractHardwareSampleStates(
-						state,
-						(channelIndex) => audioDriver.getEffectiveTone(state, channelIndex),
-						(channelIndex) =>
-							mixer.hasVirtualChannels()
-								? mixer.getHardwareChannelIndex(channelIndex)
-								: channelIndex
-					)
-				: Array.from({ length: TONE_CHANNELS }, (_, hardwareChannelIndex) => ({
-						enabled: false,
-						hardwareChannelIndex,
-						instrumentIndex: -1,
-						position: 0,
-						phase: 0,
-						effectiveTone: 0
-					}));
-			const samples = captureDigiSamples && !mixer.hasVirtualChannels()
+		const stateToConvert = mixer.hasVirtualChannels()
+			? mixer.merge(registerState, state)
+			: registerState;
+		const ayRegisters = convertRegisterStateToAYRegisters(stateToConvert);
+		const sample = captureDigiSamples
+			? extractHardwareSampleStates(
+					state,
+					(channelIndex) => audioDriver.getEffectiveTone(state, channelIndex),
+					(channelIndex) =>
+						mixer.hasVirtualChannels()
+							? mixer.getHardwareChannelIndex(channelIndex)
+							: channelIndex
+				)
+			: Array.from({ length: TONE_CHANNELS }, (_, hardwareChannelIndex) => ({
+					enabled: false,
+					hardwareChannelIndex,
+					instrumentIndex: -1,
+					position: 0,
+					phase: 0,
+					effectiveTone: 0
+				}));
+		const samples =
+			captureDigiSamples && !mixer.hasVirtualChannels()
 				? extractHardwareTaymSampleStates(
 						state,
 						registerState,
@@ -266,83 +241,139 @@ class PsgExportService {
 						sampleRestartFlags
 					)
 				: createDisabledTaymSampleStates();
-			const sid = extractHardwareSidStates(stateToConvert);
-			if (captureDigiSamples) {
-				suppressSidForTaymSampleChannels(sid, samples);
-			}
-			captureFrames.push({
-				registers: [...ayRegisters],
-				sid,
-				syncbuzzer: extractHardwareSyncBuzzerStates(stateToConvert),
-				fm: extractHardwareFmStates(stateToConvert),
-				envFm: extractHardwareEnvFmStates(stateToConvert),
-				sample,
-				samples
-			});
-			orderIndices.push(state.timeline.currentPatternOrderIndex);
-			if (mixer.hasVirtualChannels()) {
-				registerState.forceEnvelopeShapeWrite = false;
-			}
+		const sid = extractHardwareSidStates(stateToConvert);
+		if (captureDigiSamples) {
+			suppressSidForTaymSampleChannels(sid, samples);
+		}
+		frames.push({
+			registers: [...ayRegisters],
+			sid,
+			syncbuzzer: extractHardwareSyncBuzzerStates(stateToConvert),
+			fm: extractHardwareFmStates(stateToConvert),
+			envFm: extractHardwareEnvFmStates(stateToConvert),
+			sample,
+			samples
+		});
+		orderIndices.push(state.timeline.currentPatternOrderIndex);
+		if (mixer.hasVirtualChannels()) {
+			registerState.forceEnvelopeShapeWrite = false;
+		}
 
-			if (
-				captureDigiSamples &&
-				instrumentHasSample &&
-				advanceSamplePosition
+		if (captureDigiSamples && instrumentHasSample && advanceSamplePosition) {
+			for (
+				let channelIndex = 0;
+				channelIndex < state.channelInstruments.length;
+				channelIndex++
 			) {
-				for (
-					let channelIndex = 0;
-					channelIndex < state.channelInstruments.length;
-					channelIndex++
-				) {
-					if (state.channelMuted?.[channelIndex]) continue;
-					if (!state.channelSoundEnabled?.[channelIndex]) continue;
-					const instrumentIndex = state.channelInstruments[channelIndex];
-					const instrument =
-						instrumentIndex >= 0 ? state.instruments[instrumentIndex] : null;
-					if (!instrumentHasSample(instrument)) continue;
-					const effectiveTone = audioDriver.getEffectiveTone(state, channelIndex);
-					if (effectiveTone <= 0) continue;
-					for (let sampleIndex = 0; sampleIndex < samplesPerInterrupt; sampleIndex++) {
-						const playback = advanceSamplePosition(
-							state,
-							channelIndex,
-							instrument,
-							CAPTURE_OUTPUT_SAMPLE_RATE,
-							effectiveTone
-						);
-						if (!playback.active) {
-							state.channelSoundEnabled[channelIndex] = false;
-							break;
-						}
+				if (state.channelMuted?.[channelIndex]) continue;
+				if (!state.channelSoundEnabled?.[channelIndex]) continue;
+				const instrumentIndex = state.channelInstruments[channelIndex];
+				const instrument = instrumentIndex >= 0 ? state.instruments[instrumentIndex] : null;
+				if (!instrumentHasSample(instrument)) continue;
+				const effectiveTone = audioDriver.getEffectiveTone(state, channelIndex);
+				if (effectiveTone <= 0) continue;
+				for (let sampleIndex = 0; sampleIndex < samplesPerInterrupt; sampleIndex++) {
+					const playback = advanceSamplePosition(
+						state,
+						channelIndex,
+						instrument,
+						CAPTURE_OUTPUT_SAMPLE_RATE,
+						effectiveTone
+					);
+					if (!playback.active) {
+						state.channelSoundEnabled[channelIndex] = false;
+						break;
 					}
 				}
 			}
+		}
+	}
 
+	private async captureTicks(
+		ticks: AyCaptureTick[],
+		song: { patterns: Array<{ id: number; length: number }> },
+		totalRows: number,
+		onProgress?: (progress: number, message: string) => void,
+		abortSignal?: AbortSignal
+	): Promise<void> {
+		const leader = ticks[0]!;
+		const timeline = leader.state.timeline;
+		let totalTicks = 0;
+		const maxTicks = 1000000;
+		let lastProgressUpdate = 0;
+		let lastProgressTime = Date.now();
+
+		onProgress?.(50, 'Capturing register states...');
+
+		while (totalTicks < maxTicks) {
+			if (abortSignal?.aborted) {
+				throw new Error('Export cancelled');
+			}
+
+			const now = Date.now();
+			if (
+				(totalTicks - lastProgressUpdate >= 1000 || now - lastProgressTime >= 100) &&
+				totalTicks > 0
+			) {
+				let currentRow = 0;
+				for (let i = 0; i < timeline.currentPatternOrderIndex; i++) {
+					const patternId = timeline.patternOrder[i];
+					const pattern = song.patterns.find((entry) => entry.id === patternId);
+					if (pattern) {
+						currentRow += pattern.length;
+					}
+				}
+				if (leader.state.currentPattern) {
+					currentRow += timeline.currentRow;
+				}
+				onProgress?.(
+					50 + (currentRow / totalRows) * 50,
+					`Capturing... ${currentRow}/${totalRows} rows`
+				);
+				lastProgressUpdate = totalTicks;
+				lastProgressTime = now;
+				await new Promise((resolve) => setTimeout(resolve, 0));
+			}
+
+			for (const tick of ticks) {
+				this.pushCaptureFrame(tick);
+			}
+
+			const singleChip = ticks.length === 1;
+			const leaderLen = singleChip
+				? leader.state.currentPattern.length
+				: this.leaderPatternRowCount(ticks);
 			const isLastPattern =
-				state.timeline.currentPatternOrderIndex >= state.timeline.patternOrder.length - 1;
-			const isLastRow = state.timeline.currentRow >= state.currentPattern.length - 1;
-			const isLastTick = state.timeline.currentTick >= state.timeline.currentSpeed - 1;
-
+				timeline.currentPatternOrderIndex >= timeline.patternOrder.length - 1;
+			const isLastRow = timeline.currentRow >= leaderLen - 1;
+			const isLastTick = timeline.currentTick >= timeline.currentSpeed - 1;
 			if (isLastPattern && isLastRow && isLastTick) {
 				break;
 			}
 
-			const needsPatternChange = state.advancePosition();
+			const needsPatternChange = singleChip
+				? leader.state.advancePosition()
+				: leader.state.advancePosition(leaderLen);
 			if (needsPatternChange) {
-				if (state.timeline.currentPatternOrderIndex >= state.timeline.patternOrder.length) {
+				if (timeline.currentPatternOrderIndex >= timeline.patternOrder.length) {
 					break;
 				}
-				if (state.timeline.currentPatternOrderIndex < patterns.length) {
-					state.currentPattern = patterns[state.timeline.currentPatternOrderIndex];
-				} else {
+				let missingPattern = false;
+				for (const tick of ticks) {
+					if (timeline.currentPatternOrderIndex < tick.patterns.length) {
+						tick.state.currentPattern =
+							tick.patterns[timeline.currentPatternOrderIndex];
+					} else if (singleChip) {
+						missingPattern = true;
+					}
+				}
+				if (missingPattern) {
 					break;
 				}
 			}
 
 			totalTicks++;
 		}
-
-		return { frames: captureFrames, orderIndices };
 	}
 
 	async captureSongFrames(
@@ -353,6 +384,28 @@ class PsgExportService {
 		abortSignal?: AbortSignal,
 		captureOptions: CaptureRegisterOptions = {}
 	): Promise<SongCaptureResult> {
+		const created = this.createSharedCaptureTick(
+			project,
+			songIndex,
+			modules,
+			captureOptions,
+			null,
+			true
+		);
+		const song = project.songs[songIndex]!;
+		const totalRows = this.calculateTotalRows(song, project.patternOrder || [0]);
+		await this.captureTicks([created.tick], song, totalRows, onProgress, abortSignal);
+		return created.result;
+	}
+
+	private createSharedCaptureTick(
+		project: Project,
+		songIndex: number,
+		modules: PsgExportModules,
+		captureOptions: CaptureRegisterOptions,
+		sharedTimeline: unknown | null,
+		ownsTimeline: boolean
+	): { tick: AyCaptureTick; result: SongCaptureResult; timeline: unknown } {
 		const song = project.songs[songIndex];
 		if (!song || song.patterns.length === 0) {
 			throw new Error('Song is empty');
@@ -382,12 +435,21 @@ class PsgExportService {
 			project.instruments,
 			song.chipType ?? 'ay'
 		);
-		const state = new AyumiState(totalChannelCount);
+		const state = sharedTimeline
+			? new AyumiState(totalChannelCount, sharedTimeline)
+			: new AyumiState(totalChannelCount);
+		const timeline = state.timeline;
+
 		state.setTuningTable(song.tuningTable);
 		state.setInstruments(filteredInstruments);
 		state.setTables(project.tables);
-		state.setPatternOrder(project.patternOrder || [0]);
-		state.setSpeed(song.initialSpeed || DEFAULT_SPEED);
+		if (ownsTimeline) {
+			state.setPatternOrder(project.patternOrder || [0]);
+			state.setSpeed(song.initialSpeed || DEFAULT_SPEED);
+			if (song.interruptFrequency) {
+				timeline.intFrequency = song.interruptFrequency;
+			}
+		}
 		if (typeof state.setChipVariant === 'function') {
 			state.setChipVariant(isYm ? 'YM' : 'AY');
 		}
@@ -395,9 +457,6 @@ class PsgExportService {
 			state.setAymFrequency(chipFrequency);
 		} else if (state.aymFrequency !== undefined) {
 			state.aymFrequency = chipFrequency;
-		}
-		if (song.interruptFrequency) {
-			state.timeline.intFrequency = song.interruptFrequency;
 		}
 
 		const audioDriver = new AYAudioDriver(totalChannelCount);
@@ -412,42 +471,116 @@ class PsgExportService {
 
 		const patternOrder = project.patternOrder || [0];
 		const patterns = this.getPatterns(song, patternOrder);
-
 		if (patterns.length === 0) {
 			throw new Error('No patterns found');
 		}
 
-		state.currentPattern = patterns[0];
-		state.timeline.currentPatternOrderIndex = 0;
+		if (ownsTimeline) {
+			state.currentPattern = patterns[0];
+			timeline.currentPatternOrderIndex = 0;
+		} else {
+			const index = Math.min(
+				Math.max(0, timeline.currentPatternOrderIndex | 0),
+				Math.max(0, patterns.length - 1)
+			);
+			state.currentPattern = patterns[index];
+		}
 
-		const totalRows = this.calculateTotalRows(song, patternOrder);
-		const { frames, orderIndices } = await this.captureRegisterStates(
+		const frames: SongCaptureFrame[] = [];
+		const orderIndices: number[] = [];
+		const tick: AyCaptureTick = {
 			state,
 			patternProcessor,
 			audioDriver,
 			registerState,
 			mixer,
-			song,
-			totalRows,
 			patterns,
-			modules,
-			captureOptions,
 			chipFrequency,
-			onProgress
-		);
-
-		if (abortSignal?.aborted) {
-			throw new Error('Export cancelled');
-		}
-
-		return {
 			frames,
 			orderIndices,
-			instruments: filteredInstruments as CapturedAySampleInstrument[],
-			chipFrequency,
-			interruptFrequency,
-			isYm
+			taymSampleTracker: createTaymSampleCaptureTracker(),
+			captureDigiSamples: captureOptions.captureDigiSamples === true,
+			samplesPerInterrupt: Math.max(
+				1,
+				Math.round(CAPTURE_OUTPUT_SAMPLE_RATE / interruptFrequency)
+			),
+			instrumentHasSample: modules.instrumentHasSample,
+			advanceSamplePosition: modules.advanceSamplePosition
 		};
+
+		return {
+			tick,
+			timeline,
+			result: {
+				frames,
+				orderIndices,
+				instruments: filteredInstruments as CapturedAySampleInstrument[],
+				chipFrequency,
+				interruptFrequency,
+				isYm
+			}
+		};
+	}
+
+	private leaderPatternRowCount(ticks: AyCaptureTick[]): number {
+		const primary = ticks[0]?.state.currentPattern?.length ?? 0;
+		if (primary > 0) return primary;
+		for (const tick of ticks) {
+			const length = tick.state.currentPattern?.length ?? 0;
+			if (length > 0) return length;
+		}
+		return 1;
+	}
+
+	async captureSharedAySongs(
+		project: Project,
+		songIndices: number[],
+		modules: PsgExportModules,
+		onProgress?: (progress: number, message: string) => void,
+		abortSignal?: AbortSignal,
+		captureOptions: CaptureRegisterOptions = {}
+	): Promise<SongCaptureResult[]> {
+		if (songIndices.length === 0) {
+			throw new Error('No AY songs to export');
+		}
+
+		const interruptFrequency = project.songs[songIndices[0]!]?.interruptFrequency ?? 50;
+		for (const songIndex of songIndices) {
+			const song = project.songs[songIndex];
+			if (!song || song.patterns.length === 0) {
+				throw new Error('Song is empty');
+			}
+			if ((song.interruptFrequency ?? 50) !== interruptFrequency) {
+				throw new Error(
+					'PSG export requires all AY songs to use the same interrupt frequency'
+				);
+			}
+		}
+
+		const patternOrder = project.patternOrder || [0];
+		const created: Array<{ tick: AyCaptureTick; result: SongCaptureResult }> = [];
+		let sharedTimeline: unknown | null = null;
+		for (const songIndex of songIndices) {
+			const ownsTimeline = sharedTimeline == null;
+			const entry = this.createSharedCaptureTick(
+				project,
+				songIndex,
+				modules,
+				captureOptions,
+				sharedTimeline,
+				ownsTimeline
+			);
+			if (ownsTimeline) {
+				sharedTimeline = entry.timeline;
+			}
+			created.push({ tick: entry.tick, result: entry.result });
+		}
+
+		const ticks = created.map((entry) => entry.tick);
+		const leaderSong = project.songs[songIndices[0]!]!;
+		const totalRows = Math.max(1, this.calculateTotalRows(leaderSong, patternOrder));
+		await this.captureTicks(ticks, leaderSong, totalRows, onProgress, abortSignal);
+		return created.map((entry) => entry.result);
 	}
 
 	async runCaptureWithModules(
@@ -485,26 +618,7 @@ class PsgExportService {
 		}
 
 		onProgress?.(10, 'Loading processor modules...');
-		const baseUrl = import.meta.env.BASE_URL;
-		const { default: AyumiState } = await import(`${baseUrl}ay/ayumi-state.js`);
-		const { default: TrackerPatternProcessor } = await import(
-			`${baseUrl}tracker/tracker-pattern-processor.js`
-		);
-		const { default: AYAudioDriver } = await import(`${baseUrl}ay/ay-audio-driver.js`);
-		const { default: AYChipRegisterState } = await import(
-			`${baseUrl}ay/ay-chip-register-state.js`
-		);
-		const { default: VirtualChannelMixer } = await import(
-			`${baseUrl}ay/virtual-channel-mixer.js`
-		);
-
-		const modules: PsgExportModules = {
-			AyumiState,
-			TrackerPatternProcessor,
-			AYAudioDriver,
-			AYChipRegisterState,
-			VirtualChannelMixer
-		};
+		const { modules } = await loadPsgExportModules();
 
 		try {
 			const filename = project.name || 'export';
@@ -513,31 +627,19 @@ class PsgExportService {
 
 			if (aySongIndices.length > 1) {
 				const zip = new JSZip();
-				for (let i = 0; i < aySongIndices.length; i++) {
-					if (abortSignal?.aborted) {
-						throw new Error('Export cancelled');
-					}
-					const currentSongIndex = aySongIndices[i]!;
-					const startProgress = 10 + (i / aySongIndices.length) * 80;
-					onProgress?.(
-						startProgress,
-						`Generating PSG ${i + 1}/${aySongIndices.length}...`
+				onProgress?.(20, `Generating ${aySongIndices.length} PSGs...`);
+				const captures = await this.captureSharedAySongs(
+					project,
+					aySongIndices,
+					modules,
+					onProgress,
+					abortSignal
+				);
+				for (let i = 0; i < captures.length; i++) {
+					zip.file(
+						`${sanitizedFilename}_ay${i + 1}.psg`,
+						encodePSG(captures[i]!.frames.map((frame) => frame.registers))
 					);
-					const songBuffer = await this.runCaptureWithModules(
-						project,
-						currentSongIndex,
-						modules,
-						(progressValue, messageValue) => {
-							const mappedProgress =
-								startProgress + (progressValue / 100) * (80 / aySongIndices.length);
-							onProgress?.(
-								mappedProgress,
-								`PSG ${i + 1}/${aySongIndices.length}: ${messageValue}`
-							);
-						},
-						abortSignal
-					);
-					zip.file(`${sanitizedFilename}_ay${i + 1}.psg`, songBuffer);
 				}
 
 				if (abortSignal?.aborted) {
@@ -599,21 +701,12 @@ export interface GenerateCaptureOptions {
 	captureDigiSamples?: boolean;
 }
 
-export async function captureSongRegisterFrames(
-	project: Project,
-	songIndex: number = 0,
+async function loadPsgExportModules(
 	options?: GenerateCaptureOptions
-): Promise<SongCaptureResult> {
-	const song = project.songs[songIndex];
-	if (!song || song.patterns.length === 0) {
-		throw new Error('Song is empty');
-	}
-
+): Promise<{ modules: PsgExportModules; captureDigiSamples: boolean }> {
 	const captureDigiSamples = options?.captureDigiSamples === true;
-	let modules: PsgExportModules;
-	if (options?.modules) {
-		modules = options.modules;
-	} else {
+	let modules = options?.modules;
+	if (!modules) {
 		const baseUrl = import.meta.env.BASE_URL;
 		const { default: AyumiState } = await import(`${baseUrl}ay/ayumi-state.js`);
 		const { default: TrackerPatternProcessor } = await import(
@@ -634,10 +727,7 @@ export async function captureSongRegisterFrames(
 			VirtualChannelMixer
 		};
 	}
-	if (
-		captureDigiSamples &&
-		(!modules.instrumentHasSample || !modules.advanceSamplePosition)
-	) {
+	if (captureDigiSamples && (!modules.instrumentHasSample || !modules.advanceSamplePosition)) {
 		const baseUrl = import.meta.env.BASE_URL;
 		const samplePlayback = await import(`${baseUrl}ay/ay-sample-playback.js`);
 		modules = {
@@ -646,7 +736,20 @@ export async function captureSongRegisterFrames(
 			advanceSamplePosition: samplePlayback.advanceSamplePosition
 		};
 	}
+	return { modules, captureDigiSamples };
+}
 
+export async function captureSongRegisterFrames(
+	project: Project,
+	songIndex: number = 0,
+	options?: GenerateCaptureOptions
+): Promise<SongCaptureResult> {
+	const song = project.songs[songIndex];
+	if (!song || song.patterns.length === 0) {
+		throw new Error('Song is empty');
+	}
+
+	const { modules, captureDigiSamples } = await loadPsgExportModules(options);
 	return psgExportService.captureSongFrames(
 		project,
 		songIndex,
@@ -664,6 +767,28 @@ export async function generatePSGBuffer(
 ): Promise<ArrayBuffer> {
 	const capture = await captureSongRegisterFrames(project, songIndex, options);
 	return encodePSG(capture.frames.map((frame) => frame.registers));
+}
+
+export async function generateSharedPSGBuffers(
+	project: Project,
+	songIndices: number[],
+	options?: GenerateCaptureOptions
+): Promise<ArrayBuffer[]> {
+	if (songIndices.length <= 1) {
+		const songIndex = songIndices[0] ?? 0;
+		return [await generatePSGBuffer(project, songIndex, options)];
+	}
+
+	const { modules, captureDigiSamples } = await loadPsgExportModules(options);
+	const captures = await psgExportService.captureSharedAySongs(
+		project,
+		songIndices,
+		modules,
+		options?.onProgress,
+		options?.abortSignal,
+		{ captureDigiSamples }
+	);
+	return captures.map((capture) => encodePSG(capture.frames.map((frame) => frame.registers)));
 }
 
 export async function exportToPSG(

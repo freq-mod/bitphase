@@ -5,7 +5,10 @@ import { loadBtpFromFile } from './btp-loader';
 import { FileSystemResourceLoader } from './resource-loader-node';
 import { ensureCoreRegistry } from '../src/lib/chips/registry-core';
 import type { PsgExportModules } from '../src/lib/services/file/ay/psg-export';
-import { generatePSGBuffer } from '../src/lib/services/file/ay/psg-export';
+import {
+	generatePSGBuffer,
+	generateSharedPSGBuffers
+} from '../src/lib/services/file/ay/psg-export';
 import type { Project } from '../src/lib/models/project';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -36,7 +39,9 @@ async function loadModulesFromPublic(
 		resourceLoader.loadModule<{ default: PsgExportModules['TrackerPatternProcessor'] }>(
 			'tracker/tracker-pattern-processor.js'
 		),
-		resourceLoader.loadModule<{ default: PsgExportModules['AYAudioDriver'] }>('ay/ay-audio-driver.js'),
+		resourceLoader.loadModule<{ default: PsgExportModules['AYAudioDriver'] }>(
+			'ay/ay-audio-driver.js'
+		),
 		resourceLoader.loadModule<{ default: PsgExportModules['AYChipRegisterState'] }>(
 			'ay/ay-chip-register-state.js'
 		),
@@ -102,14 +107,14 @@ async function main(): Promise<void> {
 		}
 
 		const multipleSongs = aySongIndices.length > 1;
+		const buffers = multipleSongs
+			? await generateSharedPSGBuffers(project, aySongIndices, { modules })
+			: [await generatePSGBuffer(project, aySongIndices[0]!, { modules })];
 
-		for (let index = 0; index < aySongIndices.length; index++) {
-			const songIndex = aySongIndices[index]!;
-			process.stderr.write(`\r[${index + 1}/${aySongIndices.length}] Generating PSG...    `);
-			const buffer = await generatePSGBuffer(project, songIndex, { modules });
+		for (let index = 0; index < buffers.length; index++) {
 			const base = multipleSongs ? `${outputBase}_ay${index + 1}` : outputBase;
-			fs.writeFileSync(`${base}.psg`, Buffer.from(buffer));
-			console.error(`\nWrote: ${base}.psg`);
+			fs.writeFileSync(`${base}.psg`, Buffer.from(buffers[index]!));
+			console.error(`Wrote: ${base}.psg`);
 		}
 	} catch (error) {
 		console.error('\nError:', error instanceof Error ? error.message : error);
