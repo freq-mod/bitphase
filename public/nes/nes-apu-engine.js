@@ -67,6 +67,8 @@ class NesApuEngine {
 		this._lastApuOutputMask = -1;
 		this._lastDmcOutputMask = -1;
 		this._lastOutput = { left: 0, right: 0 };
+		this._dcPrevIn = [0, 0];
+		this._dcPrevOut = [0, 0];
 		this._scopeRawOut = [0, 0, 0, 0, 0];
 		this.sampleMemPtr = 0;
 	}
@@ -99,6 +101,8 @@ class NesApuEngine {
 		this._lastApuOutputMask = -1;
 		this._lastDmcOutputMask = -1;
 		this._lastOutput = { left: 0, right: 0 };
+		this._dcPrevIn = [0, 0];
+		this._dcPrevOut = [0, 0];
 		this._scopeRawOut = [0, 0, 0, 0, 0];
 		this._parkTriangleDacAtZero();
 	}
@@ -456,8 +460,15 @@ class NesApuEngine {
 		this.wasmModule.nes_apu_Render(this.apuPtr, this.outputPtr);
 		this.wasmModule.nes_dmc_Render(this.dmcPtr, this.outputPtr + 8);
 		const samples = new Int32Array(memory, this.outputPtr, 4);
-		const left = (samples[0] + samples[2]) * NES_APU_OUTPUT_SCALE;
-		const right = (samples[1] + samples[3]) * NES_APU_OUTPUT_SCALE;
+		const rawLeft = (samples[0] + samples[2]) * NES_APU_OUTPUT_SCALE;
+		const rawRight = (samples[1] + samples[3]) * NES_APU_OUTPUT_SCALE;
+		const dcPole = 0.995;
+		const left = rawLeft - this._dcPrevIn[0] + dcPole * this._dcPrevOut[0];
+		const right = rawRight - this._dcPrevIn[1] + dcPole * this._dcPrevOut[1];
+		this._dcPrevIn[0] = rawLeft;
+		this._dcPrevIn[1] = rawRight;
+		this._dcPrevOut[0] = left;
+		this._dcPrevOut[1] = right;
 		this._lastOutput = { left, right };
 		return this._lastOutput;
 	}
