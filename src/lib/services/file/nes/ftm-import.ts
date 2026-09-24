@@ -314,6 +314,7 @@ export function importFtmBuffer(buffer: ArrayBuffer, fallbackName = ''): FtmImpo
 	}
 
 	const skippedEffects = new Set<string>();
+	const arpTables = buildArpTables(instruments, sequences, note);
 	const projectInstruments = instruments.map((instrument) =>
 		toInstrument(instrument, sequences, samples, note)
 	);
@@ -327,7 +328,8 @@ export function importFtmBuffer(buffer: ArrayBuffer, fallbackName = ''): FtmImpo
 			header.effectColumns[trackIndex] ?? header.effectColumns[0] ?? [],
 			cells.get(trackIndex) ?? new Map(),
 			params,
-			skippedEffects
+			skippedEffects,
+			arpTables.byInstrument
 		)
 	);
 
@@ -343,7 +345,7 @@ export function importFtmBuffer(buffer: ArrayBuffer, fallbackName = ''): FtmImpo
 			songs,
 			0,
 			firstOrder.length > 0 ? firstOrder : [0],
-			[new Table(0, [], 0, 'Table 1')],
+			arpTables.tables,
 			{},
 			projectInstruments
 		),
@@ -716,18 +718,12 @@ function toInstrument(
 			loop: holdLoop(volume.loopPoint, volume.values.length)
 		};
 	}
-	const arpeggio = enabledSequence(source, sequences, 1);
-	if (arpeggio && arpeggio.values.length > 0) {
-		note('Instrument arpeggio sequences were not imported');
-	}
 	const pitch = enabledSequence(source, sequences, 2);
 	const hiPitch = enabledSequence(source, sequences, 3);
 	const tone = mergePitch(pitch, hiPitch);
 	if (tone) {
 		macros.toneAdd = { values: tone.values, loop: tone.loop };
-		if (tone.relative) {
-			macros.toneAccumulation = { values: tone.values.map(() => true), loop: tone.loop };
-		}
+		macros.toneAccumulation = { values: tone.values.map(() => true), loop: tone.loop };
 	}
 	const duty = enabledSequence(source, sequences, 4);
 	if (duty && duty.values.length > 0) {
@@ -780,7 +776,7 @@ function enabledSequence(
 function mergePitch(
 	pitch: FtmSequence | null,
 	hiPitch: FtmSequence | null
-): { values: number[]; loop: number; relative: boolean } | null {
+): { values: number[]; loop: number } | null {
 	const primary = pitch && pitch.values.length > 0 ? pitch : null;
 	const coarse = hiPitch && hiPitch.values.length > 0 ? hiPitch : null;
 	if (!primary && !coarse) return null;
@@ -794,9 +790,46 @@ function mergePitch(
 	const loopSource = primary ?? coarse!;
 	return {
 		values,
-		loop: holdLoop(loopSource.loopPoint, values.length),
-		relative: (loopSource.settings ?? 0) !== 0
+		loop: holdLoop(loopSource.loopPoint, values.length)
 	};
+}
+
+function buildArpTables(
+	instruments: FtmInstrument[],
+	sequences: FtmSequence[][],
+	note: (message: string) => void
+): { tables: Table[]; byInstrument: Map<number, number> } {
+	const byInstrument = new Map<number, number>();
+	const tables: Table[] = [];
+	const seen = new Map<string, number>();
+	let fixedWarned = false;
+	for (const source of instruments) {
+		if (source.type !== 1) continue;
+		const arpeggio = enabledSequence(source, sequences, 1);
+		if (!arpeggio || arpeggio.values.length === 0) continue;
+		if (arpeggio.settings === 1) {
+			if (!fixedWarned) {
+				note('FamiTracker fixed arpeggio sequences were not imported');
+				fixedWarned = true;
+			}
+			continue;
+		}
+		const rows = arpeggio.values.slice(0, MAX_SEQUENCE_ITEMS);
+		const loop = holdLoop(arpeggio.loopPoint, rows.length);
+		const additive = arpeggio.settings === 2;
+		const key = `${additive ? 1 : 0}:${loop}:${rows.join(',')}`;
+		let id = seen.get(key);
+		if (id === undefined) {
+			id = tables.length;
+			seen.set(key, id);
+			tables.push(
+				new Table(id, rows, loop, source.name || `Arp ${id + 1}`, additive)
+			);
+		}
+		byInstrument.set(source.index, id);
+	}
+	if (tables.length === 0) tables.push(new Table(0, [], 0, 'Table 1'));
+	return { tables, byInstrument };
 }
 
 function toSong(
@@ -804,7 +837,8 @@ function toSong(
 	effectColumns: number[],
 	cells: Map<number, Map<number, Map<number, FtmCell>>>,
 	params: FtmParams,
-	skippedEffects: Set<string>
+	skippedEffects: Set<string>,
+	arpByInstrument: Map<number, number>
 ): Song {
 	const song = new Song(NES_CHIP_SCHEMA);
 	song.chipType = 'nes';
@@ -818,6 +852,7 @@ function toSong(
 	song.interruptFrequency = params.engineHz;
 	song.tuningTable = resolveNesTuningTable(song.chipFrequency, song.a4TuningHz);
 
+	const latchedInstrument = Array.from({ length: NES_CHANNEL_COUNT }, () => -1);
 	song.patterns = track.frames.map((frame, frameIndex) => {
 		const pattern = new Pattern(frameIndex, track.patternLength, NES_CHIP_SCHEMA);
 		for (let channel = 0; channel < NES_CHANNEL_COUNT; channel++) {
@@ -829,7 +864,15 @@ function toSong(
 			for (let rowIndex = 0; rowIndex < track.patternLength; rowIndex++) {
 				const cell = rows?.get(rowIndex);
 				patternChannel.rows[rowIndex] = cell
-					? toRow(cell, columnCount, params.speedSplit, skippedEffects, channel)
+					? toRow(
+							cell,
+							columnCount,
+							params.speedSplit,
+							skippedEffects,
+							channel,
+							latchedInstrument,
+							arpByInstrument
+						)
 					: emptyRow(columnCount);
 			}
 		}
@@ -851,17 +894,28 @@ function toRow(
 	columnCount: number,
 	speedSplit: number,
 	skippedEffects: Set<string>,
-	channel: number
+	channel: number,
+	latchedInstrument: number[],
+	arpByInstrument: Map<number, number>
 ): Row {
 	const row = emptyRow(columnCount);
-	if (cell.note >= 1 && cell.note <= 12) {
+	const noteOn = cell.note >= 1 && cell.note <= 12;
+	if (noteOn) {
 		row.note = new Note((cell.note + 1) as NoteName, cell.octave + 1);
 	} else if (cell.note === 13 || cell.note === 14) {
 		row.note = new Note(NoteName.Off, 0);
 		if (cell.note === 13) skippedEffects.add('===');
 	}
+	let instrumentSet = false;
 	if (cell.instrument < MAX_FT_INSTRUMENTS) {
 		row.instrument = cell.instrument + 1;
+		latchedInstrument[channel] = cell.instrument;
+		instrumentSet = true;
+	}
+	if (noteOn || instrumentSet) {
+		const instrumentIndex = latchedInstrument[channel] ?? -1;
+		const tableId = instrumentIndex >= 0 ? arpByInstrument.get(instrumentIndex) : undefined;
+		row.table = tableId === undefined ? -1 : tableId + 1;
 	}
 	row.volume = ftVolume(cell.volume);
 	const effects: (Effect | null)[] = [];
@@ -918,9 +972,9 @@ function mapEffect(
 		case 13:
 			return new Effect(EffectType.Detune, 0, byte);
 		case 16:
-			return new Effect(PERIOD_DOWN, 0, byte);
+			return new Effect(channel === 3 ? PERIOD_UP : PERIOD_DOWN, 0, byte);
 		case 17:
-			return new Effect(PERIOD_UP, 0, byte);
+			return new Effect(channel === 3 ? PERIOD_DOWN : PERIOD_UP, 0, byte);
 		case 18:
 			if (channel > 1 && channel !== 3) {
 				skippedEffects.add('V');

@@ -20,7 +20,7 @@ function block(name: string, version: number, data: number[]): number[] {
 	return [...padded(name, 16), ...u32(version), ...u32(data.length), ...data];
 }
 
-function moduleBytes(expansion = 0): Uint8Array {
+function moduleBytes(expansion = 0, withArp = false): Uint8Array {
 	const params = [
 		expansion,
 		...u32(5),
@@ -48,8 +48,8 @@ function moduleBytes(expansion = 0): Uint8Array {
 		...u32(5),
 		1,
 		0,
-		0,
-		0,
+		withArp ? 1 : 0,
+		withArp ? 1 : 0,
 		0,
 		0,
 		0,
@@ -60,18 +60,39 @@ function moduleBytes(expansion = 0): Uint8Array {
 		...u32(4),
 		...ascii('Lead')
 	];
-	const sequences = [
-		...u32(1),
-		...u32(0),
-		...u32(0),
-		3,
-		...u32(-1),
-		15,
-		12,
-		8,
-		...u32(-1),
-		...u32(0)
-	];
+	const sequences = withArp
+		? [
+				...u32(2),
+				...u32(0),
+				...u32(0),
+				3,
+				...u32(-1),
+				15,
+				12,
+				8,
+				...u32(1),
+				...u32(1),
+				2,
+				...u32(0),
+				4,
+				7,
+				...u32(-1),
+				...u32(0),
+				...u32(-1),
+				...u32(0)
+			]
+		: [
+				...u32(1),
+				...u32(0),
+				...u32(0),
+				3,
+				...u32(-1),
+				15,
+				12,
+				8,
+				...u32(-1),
+				...u32(0)
+			];
 	const frames = [...u32(2), ...u32(6), ...u32(150), ...u32(4), 0, 1, 0, 0, 0, 1, 1, 0, 0, 0];
 	const patterns = [
 		...u32(0),
@@ -200,6 +221,18 @@ describe('ftm import', () => {
 			loop: true,
 			delta: null
 		});
+	});
+
+	it('imports instrument arpeggios as pattern tables', () => {
+		const { project, warnings } = importFtmBuffer(moduleBytes(0, true).buffer);
+		expect(warnings.some((warning) => warning.includes('arpeggio'))).toBe(false);
+		expect(project.tables[0]).toMatchObject({
+			id: 0,
+			rows: [4, 7],
+			loop: 0,
+			additive: false
+		});
+		expect(project.songs[0]!.patterns[0]!.channels[0]!.rows[0]!.table).toBe(1);
 	});
 
 	it('warns when an expansion chip is present', () => {
