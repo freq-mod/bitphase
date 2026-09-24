@@ -153,6 +153,7 @@ export function appendNesRegisterDiffs(
 
 	const length = Math.min(previous.length, next.length, 0x15);
 	for (let i = 0; i < length; i++) {
+		if ((next[i] ?? 0) < 0) continue;
 		if (previous[i] !== next[i]) {
 			appendNesWrite(commands, i, next[i]!, chipIndex);
 			previous[i] = next[i]!;
@@ -171,6 +172,59 @@ export function appendNesRegisterDiffs(
 		const value = next[lengthReg] ?? 0;
 		appendNesWrite(commands, lengthReg, value, chipIndex);
 		previous[lengthReg] = value;
+	}
+}
+
+const VGM_CMD_DATA_BLOCK = 0x67;
+const VGM_DATA_BLOCK_END = 0x66;
+const VGM_DATA_NES_APU_RAM = 0xc2;
+const NES_DPCM_RAM_ORIGIN = 0xc000;
+
+export function appendNesDpcmSample(
+	commands: number[],
+	bytes: Uint8Array,
+	_chipIndex: 0 | 1 = 0,
+	address = NES_DPCM_RAM_ORIGIN
+): void {
+	const payloadSize = 2 + bytes.length;
+	commands.push(
+		VGM_CMD_DATA_BLOCK,
+		VGM_DATA_BLOCK_END,
+		VGM_DATA_NES_APU_RAM,
+		payloadSize & 0xff,
+		(payloadSize >> 8) & 0xff,
+		(payloadSize >> 16) & 0xff,
+		(payloadSize >> 24) & 0xff,
+		address & 0xff,
+		(address >> 8) & 0xff
+	);
+	for (let i = 0; i < bytes.length; i++) {
+		commands.push(bytes[i]! & 0xff);
+	}
+}
+
+export function appendNesDpcmTrigger(
+	commands: number[],
+	previous: number[],
+	next: number[],
+	chipIndex: 0 | 1,
+	bytes: Uint8Array | null
+): void {
+	if (bytes && bytes.length > 0) {
+		appendNesDpcmSample(commands, bytes, chipIndex);
+	}
+	for (const register of [0x10, 0x11, 0x12, 0x13]) {
+		const value = next[register];
+		if (value == null || value < 0) continue;
+		appendNesWrite(commands, register, value, chipIndex);
+		previous[register] = value & 0xff;
+	}
+	const status = next[0x15] ?? 0;
+	if (status < 0 || (status & 0x10) === 0) return;
+	if ((previous[0x15] ?? -1) >= 0 && (previous[0x15]! & 0x10) !== 0) {
+		appendNesWrite(commands, 0x15, status & ~0x10, chipIndex);
+		appendNesWrite(commands, 0x15, status, chipIndex);
+		previous[0x15] = status & 0xff;
 	}
 }
 

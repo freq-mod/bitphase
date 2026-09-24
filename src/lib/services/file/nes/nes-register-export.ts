@@ -1,6 +1,7 @@
 import type { Project } from '../../../models/project';
 import { getTotalVirtualChannelCount } from '../../../models/virtual-channels';
 import { filterInstrumentsForChip } from '../../instrument/instrument-filter';
+import { NES_DPCM_MAX_BYTES } from '../../../chips/nes/dpcm';
 import { NES_NTSC_CPU_FREQUENCY } from '../../../chips/nes/schema';
 
 const DEFAULT_SPEED = 6;
@@ -11,9 +12,16 @@ const NES_SQUARE_LENGTH_NIBBLE = 0xf;
 const NES_TRIANGLE_LINEAR_RELOAD = 0x7f;
 const NES_APU_REG_COUNT = 0x16;
 const NES_APU_STATUS_INTERNAL_CHANNELS = 0x0f;
+const NES_APU_STATUS_DPCM = 0x10;
+
+export type NesDpcmCapture = {
+	retrigger: boolean;
+	bytes: Uint8Array | null;
+};
 
 export type NesCaptureResult = {
 	frames: number[][];
+	dpcmFrames: Array<NesDpcmCapture | null>;
 	orderIndices: number[];
 	chipFrequency: number;
 	interruptFrequency: number;
@@ -134,6 +142,31 @@ function writeNoiseRegs(regs: number[], channel: any): void {
 	regs[0x0f] = (lengthNibble << 3) & 0xff;
 }
 
+function writeDpcmRegs(regs: number[], channel: any): void {
+	if (!channel?.enabled || !channel.dpcmBytes?.length) return;
+	const pitch = channel.dpcmPitch & 15;
+	const loopBit = channel.dpcmLoop ? 0x40 : 0;
+	regs[0x10] = loopBit | pitch;
+	regs[0x11] =
+		channel.dpcmDelta != null && channel.dpcmDelta >= 0 ? channel.dpcmDelta & 127 : -1;
+	regs[0x12] = 0;
+	regs[0x13] = channel.dpcmLengthReg & 0xff;
+	regs[0x15] |= NES_APU_STATUS_DPCM;
+}
+
+export function readNesDpcmCapture(channel: any): NesDpcmCapture | null {
+	if (!channel?.enabled || !channel.dpcmBytes?.length) return null;
+	const retrigger = Boolean(channel.retrigger);
+	if (!retrigger) return { retrigger: false, bytes: null };
+	const source = channel.dpcmBytes as ArrayLike<number>;
+	const count = Math.min(source.length, NES_DPCM_MAX_BYTES);
+	const bytes = new Uint8Array(count);
+	for (let i = 0; i < count; i++) {
+		bytes[i] = source[i]! & 0xff;
+	}
+	return { retrigger: true, bytes };
+}
+
 export function convertNesRegisterStateToApuRegs(registerState: any): number[] {
 	const regs = new Array(NES_APU_REG_COUNT).fill(0);
 	const channels = registerState?.channels ?? [];
@@ -141,8 +174,9 @@ export function convertNesRegisterStateToApuRegs(registerState: any): number[] {
 	writeSquareRegs(regs, 1, channels[1]);
 	writeTriangleRegs(regs, channels[2]);
 	writeNoiseRegs(regs, channels[3]);
+	writeDpcmRegs(regs, channels[4]);
 
-	regs[0x15] = NES_APU_STATUS_INTERNAL_CHANNELS;
+	regs[0x15] |= NES_APU_STATUS_INTERNAL_CHANNELS;
 	return regs;
 }
 
@@ -200,8 +234,9 @@ async function captureRegisterFrames(
 	totalRows: number,
 	patterns: any[],
 	onProgress?: (progress: number, message: string) => void
-): Promise<{ frames: number[][]; orderIndices: number[] }> {
+): Promise<{ frames: number[][]; dpcmFrames: Array<NesDpcmCapture | null>; orderIndices: number[] }> {
 	const frames: number[][] = [];
+	const dpcmFrames: Array<NesDpcmCapture | null> = [];
 	const orderIndices: number[] = [];
 	let totalTicks = 0;
 	const maxTicks = 1000000;
@@ -256,6 +291,7 @@ async function captureRegisterFrames(
 			? mixer.merge(registerState, state)
 			: registerState;
 		frames.push(convertNesRegisterStateToApuRegs(stateToConvert));
+		dpcmFrames.push(readNesDpcmCapture(stateToConvert.channels?.[4]));
 		orderIndices.push(state.timeline.currentPatternOrderIndex);
 
 		const isLastPattern =
@@ -281,7 +317,7 @@ async function captureRegisterFrames(
 		totalTicks++;
 	}
 
-	return { frames, orderIndices };
+	return { frames, dpcmFrames, orderIndices };
 }
 
 export async function captureNesRegisterFrames(
@@ -369,6 +405,7 @@ export async function captureNesRegisterFrames(
 
 	return {
 		frames: framesResult.frames,
+		dpcmFrames: framesResult.dpcmFrames,
 		orderIndices: framesResult.orderIndices,
 		chipFrequency,
 		interruptFrequency

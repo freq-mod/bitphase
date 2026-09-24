@@ -1,9 +1,10 @@
 import type { Project } from '../../../models/project';
 import { downloadFile, sanitizeFilename } from '../../../utils/file-download';
 import type { SongCaptureResult } from '../ay/psg-export';
-import type { NesCaptureResult } from '../nes/nes-register-export';
+import type { NesCaptureResult, NesDpcmCapture } from '../nes/nes-register-export';
 import {
 	appendAyWrite,
+	appendNesDpcmTrigger,
 	appendNesRegisterDiffs,
 	appendWait,
 	encodeVgm,
@@ -32,7 +33,7 @@ type StreamEvent =
 			skipRegisters: Set<number>;
 	  }
 	| { sample: number; kind: 'ay-timer'; chip: 0 | 1; write: AyTimedWrite }
-	| { sample: number; kind: 'nes'; chip: 0 | 1; registers: number[] };
+	| { sample: number; kind: 'nes'; chip: 0 | 1; registers: number[]; dpcm: NesDpcmCapture | null };
 
 function getSongIndicesByChip(project: Project, chipType: string): number[] {
 	const indices: number[] = [];
@@ -141,7 +142,17 @@ function emitStreamEvents(
 		} else if (event.kind === 'ay-timer') {
 			applyAyTimedWrite(commands, ayPrev[event.chip]!, event.write, event.chip);
 		} else {
-			appendNesRegisterDiffs(commands, nesPrev[event.chip]!, event.registers, event.chip);
+			const previous = nesPrev[event.chip]!;
+			if (event.dpcm?.retrigger) {
+				appendNesDpcmTrigger(
+					commands,
+					previous,
+					event.registers,
+					event.chip,
+					event.dpcm.bytes
+				);
+			}
+			appendNesRegisterDiffs(commands, previous, event.registers, event.chip);
 		}
 	}
 
@@ -212,7 +223,8 @@ function collectFrameEvents(
 			sample: frameStart,
 			kind: 'nes',
 			chip: chip === 0 ? 0 : 1,
-			registers: regs
+			registers: regs,
+			dpcm: nesCaptures[chip]!.dpcmFrames?.[frameIndex] ?? null
 		});
 	}
 

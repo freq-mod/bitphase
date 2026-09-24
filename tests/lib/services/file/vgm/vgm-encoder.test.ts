@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
 	appendAyWrite,
+	appendNesDpcmTrigger,
 	appendNesRegisterDiffs,
 	appendNesWrite,
 	appendWait,
@@ -176,6 +177,31 @@ describe('nes register conversion', () => {
 		expect(regs[0x0c] & 0x0f).toBe(0);
 		expect(regs[0x15]).toBe(0x0f);
 	});
+
+	it('maps a retriggered DPCM channel to $4010-$4013 and sets $4015 bit 4', () => {
+		const regs = convertNesRegisterStateToApuRegs({
+			channels: [
+				{ enabled: false, period: 0 },
+				{ enabled: false, period: 0 },
+				{ enabled: false, period: 0 },
+				{ enabled: false },
+				{
+					enabled: true,
+					retrigger: true,
+					dpcmPitch: 15,
+					dpcmLoop: true,
+					dpcmDelta: null,
+					dpcmLengthReg: 1,
+					dpcmBytes: [0xaa, 0x55]
+				}
+			]
+		});
+		expect(regs[0x10]).toBe(0x4f);
+		expect(regs[0x11]).toBe(-1);
+		expect(regs[0x12]).toBe(0);
+		expect(regs[0x13]).toBe(1);
+		expect(regs[0x15] & 0x10).toBe(0x10);
+	});
 });
 
 describe('appendNesRegisterDiffs', () => {
@@ -206,5 +232,33 @@ describe('appendNesRegisterDiffs', () => {
 		expect(commands[lengthWrites[1]!]!).toBe(VGM_CMD_NES_APU);
 		expect(commands[lengthWrites[1]! + 1]).toBe(0x0f);
 		expect(commands[lengthWrites[1]! + 2]).toBe(0x78);
+	});
+});
+
+describe('appendNesDpcmTrigger', () => {
+	it('writes the sample into NES RAM at $C000 and restarts the DMC', () => {
+		const previous = new Array(0x16).fill(0);
+		previous[0x15] = 0x1f;
+		const next = new Array(0x16).fill(0);
+		next[0x10] = 0x0f;
+		next[0x11] = -1;
+		next[0x12] = 0;
+		next[0x13] = 0;
+		next[0x15] = 0x1f;
+
+		const commands: number[] = [];
+		appendNesDpcmTrigger(commands, previous, next, 0, new Uint8Array([0xaa]));
+
+		expect(commands.slice(0, 12)).toEqual([
+			0x67, 0x66, 0xc2, 3, 0, 0, 0, 0x00, 0xc0, 0xaa, VGM_CMD_NES_APU, 0x10
+		]);
+		expect(commands).toContain(0x0f);
+		const statusWrites = [];
+		for (let i = 0; i < commands.length; i++) {
+			if (commands[i] === VGM_CMD_NES_APU && commands[i + 1] === 0x15) {
+				statusWrites.push(commands[i + 2]);
+			}
+		}
+		expect(statusWrites).toEqual([0x0f, 0x1f]);
 	});
 });

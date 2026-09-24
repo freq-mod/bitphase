@@ -14,6 +14,8 @@ import {
 } from '../ay/ay-export-utils';
 import {
 	convertNesRegisterStateToApuRegs,
+	readNesDpcmCapture,
+	type NesDpcmCapture,
 	type NesCaptureResult,
 	type NesExportModules
 } from '../nes/nes-register-export';
@@ -381,6 +383,7 @@ function createNesCaptureSlot(
 	sharedTimeline: unknown | null,
 	patternOrder: number[],
 	framesOut: number[][],
+	dpcmOut: Array<NesDpcmCapture | null>,
 	ownsTimeline: boolean
 ): { slot: CaptureSlot; result: NesCaptureResult; timeline: unknown } {
 	const song = project.songs[songIndex]!;
@@ -463,6 +466,7 @@ function createNesCaptureSlot(
 				? mixer.merge(registerState, state)
 				: registerState;
 			framesOut.push(convertNesRegisterStateToApuRegs(stateToConvert));
+			dpcmOut.push(readNesDpcmCapture(stateToConvert.channels?.[4]));
 		},
 		onPatternOrderAdvanced(needsChange) {
 			if (!needsChange) return;
@@ -478,6 +482,7 @@ function createNesCaptureSlot(
 		timeline,
 		result: {
 			frames: framesOut,
+			dpcmFrames: dpcmOut,
 			orderIndices: [],
 			chipFrequency,
 			interruptFrequency
@@ -529,6 +534,7 @@ async function captureSharedProject(
 
 	const ayFrameBuffers = ayIndices.map(() => [] as SongCaptureFrame[]);
 	const nesFrameBuffers = nesIndices.map(() => [] as number[][]);
+	const nesDpcmBuffers = nesIndices.map(() => [] as Array<NesDpcmCapture | null>);
 	const ayResults: SongCaptureResult[] = new Array(ayIndices.length);
 	const nesResults: NesCaptureResult[] = new Array(nesIndices.length);
 	const slots: CaptureSlot[] = [];
@@ -560,6 +566,7 @@ async function captureSharedProject(
 				sharedTimeline,
 				patternOrder,
 				nesFrameBuffers[entry.arrayIndex]!,
+				nesDpcmBuffers[entry.arrayIndex]!,
 				ownsTimeline
 			);
 			if (ownsTimeline) {
