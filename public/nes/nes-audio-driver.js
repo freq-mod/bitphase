@@ -22,6 +22,7 @@ import {
 	usesTriangleLinearCounter
 } from './nes-instrument-utils.js';
 import { NES_CHANNEL_COUNT } from './nes-constants.js';
+import { resolveNesDpcmAssignment } from './nes-dpcm.js';
 import {
 	advanceNesPulseWidthTable,
 	processNesPulseWidthCycleEffect,
@@ -102,6 +103,8 @@ class NesAudioDriver {
 			channel.period = 0;
 			channel.volumeReg = NES_REGISTER_UNCHANGED;
 			channel.linearReg = NES_REGISTER_UNCHANGED;
+			channel.dpcmBytes = null;
+			channel.dpcmLoop = false;
 		}
 	}
 
@@ -216,6 +219,29 @@ class NesAudioDriver {
 		return resolveNesNoisePeriodFromSemitoneOffset(semitoneOffset);
 	}
 
+	_applyDpcmChannel(state, registerState, channelIndex) {
+		const channel = registerState.channels[channelIndex];
+		const instrumentIndex = state.channelInstruments[channelIndex];
+		const instrument = state.instruments[instrumentIndex];
+		const noteIndex = state.channelCurrentNotes[channelIndex] | 0;
+		const assignment = resolveNesDpcmAssignment(instrument, noteIndex);
+		const keyOn = state.channelKeyOn[channelIndex];
+		if (!assignment) {
+			this._silenceChannel(registerState, channelIndex);
+			state.channelKeyOn[channelIndex] = false;
+			return;
+		}
+		channel.enabled = true;
+		channel.volume = assignment.delta ?? 0;
+		channel.dpcmPitch = assignment.pitch;
+		channel.dpcmLoop = assignment.loop;
+		channel.dpcmDelta = assignment.delta;
+		channel.dpcmLengthReg = assignment.lengthReg;
+		channel.dpcmBytes = assignment.data;
+		channel.retrigger = Boolean(keyOn);
+		state.channelKeyOn[channelIndex] = false;
+	}
+
 	resolveInstrumentRow(state, channelIndex) {
 		const instrumentIndex = state.channelInstruments[channelIndex];
 		const instrument = state.instruments[instrumentIndex];
@@ -240,6 +266,11 @@ class NesAudioDriver {
 
 			if (!channelHasAssignedInstrument(state, channelIndex)) {
 				this._silenceChannel(registerState, channelIndex);
+				continue;
+			}
+
+			if (hwType === 4) {
+				this._applyDpcmChannel(state, registerState, channelIndex);
 				continue;
 			}
 

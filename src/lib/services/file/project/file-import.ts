@@ -2,6 +2,7 @@ import type { Chip } from '../../../chips/types';
 import { loadVT2File, loadPT3File } from '../modules/vt-converter';
 import { isTaymBuffer, loadTaymFile } from '../taym/taym-import';
 import { isPsgBuffer, loadPsgFile } from '../ay/psg-import';
+import { isFtmBuffer, loadFtmFile } from '../nes/ftm-import';
 import { Project, Table } from '../../../models/project';
 import {
 	Song,
@@ -19,6 +20,7 @@ import {
 import { isValidInstrumentSampleByteLength } from '../../../utils/audio-sample-decode';
 import { normalizeSamplePlaybackBounds } from '../../../chips/ay/sample-region';
 import { normalizeNesInstrumentRow } from '../../../chips/nes/instrument';
+import { copyNesDpcmFields, normalizeDpcmSamples } from '../../../chips/nes/dpcm';
 import type { ChipSchema } from '../../../chips/base/schema';
 import { computeEffectiveChannelLabels } from '../../../models/virtual-channels';
 import {
@@ -388,6 +390,19 @@ function reconstructInstrument(data: any): Instrument {
 	if (typeof data.sampleRate === 'number' && data.sampleRate > 0) {
 		withSample.sampleRate = data.sampleRate;
 	}
+	const dpcmTarget = withSample as typeof withSample & {
+		dpcmSamples?: { name: string; data: number[] }[];
+		dpcmAssignments?: ({ sampleIndex: number; pitch: number; loop: boolean; delta: number } | null)[];
+	};
+	if (Array.isArray(data.dpcmSamples)) {
+		copyNesDpcmFields(
+			{
+				dpcmSamples: normalizeDpcmSamples(data.dpcmSamples),
+				dpcmAssignments: data.dpcmAssignments
+			},
+			dpcmTarget
+		);
+	}
 	if (withSample.sampleData?.length) {
 		const bounds = normalizeSamplePlaybackBounds({
 			sampleData: withSample.sampleData,
@@ -480,7 +495,7 @@ export class FileImportService {
 		try {
 			const input = document.createElement('input');
 			input.type = 'file';
-			input.accept = '.pt3,.vt2,.taym,.psg';
+			input.accept = '.pt3,.vt2,.taym,.psg,.ftm';
 			input.style.display = 'none';
 
 			document.body.appendChild(input);
@@ -509,18 +524,21 @@ export class FileImportService {
 						const isVT2 = header.startsWith('[Module]');
 						const isTaym = isTaymBuffer(buffer);
 						const isPsg = isPsgBuffer(buffer);
-						if (!isPT3 && !isVT2 && !isTaym && !isPsg) {
+						const isFtm = isFtmBuffer(buffer);
+						if (!isPT3 && !isVT2 && !isTaym && !isPsg && !isFtm) {
 							throw new Error(
-								'Unknown format. Expected PT3, VT2, TAYM or PSG module (.pt3, .vt2, .taym, .psg).'
+								'Unknown format. Expected PT3, VT2, TAYM, PSG or FTM module (.pt3, .vt2, .taym, .psg, .ftm).'
 							);
 						}
-						const project = isTaym
-							? await loadTaymFile(file)
-							: isPsg
-								? await loadPsgFile(file)
-								: isPT3
-									? await loadPT3File(file)
-									: await loadVT2File(file);
+						const project = isFtm
+							? await loadFtmFile(file)
+							: isTaym
+								? await loadTaymFile(file)
+								: isPsg
+									? await loadPsgFile(file)
+									: isPT3
+										? await loadPT3File(file)
+										: await loadVT2File(file);
 						resolve(project);
 					} catch (error) {
 						console.error('Error loading module file:', error);

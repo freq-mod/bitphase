@@ -23,6 +23,7 @@
 	import type { ChipProcessor } from '../../chips/base/processor';
 	import { getChipByType } from '../../chips/registry';
 	import { instrumentHasSample } from '../../chips/ay/sample-region';
+	import { instrumentHasDpcm } from '../../chips/nes/dpcm';
 	import PillTabs, { type PillTab } from '../PillTabs/PillTabs.svelte';
 	import {
 		isValidInstrumentId,
@@ -227,6 +228,7 @@
 
 	function isInstrumentUsed(instrument: Instrument): boolean {
 		if (instrumentHasSample(instrument as { sampleData?: number[] })) return true;
+		if (instrumentHasDpcm(instrument as { dpcmSamples?: { data?: unknown[] }[] })) return true;
 		const extra = instrument as Instrument & { timerMacros?: typeof instrument.macros };
 		if (extra.timerMacros && Object.values(extra.timerMacros).some((macro) => macro.values.length > 0)) {
 			return true;

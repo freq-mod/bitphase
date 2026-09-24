@@ -12,8 +12,14 @@ import type {
 import type { ChipSettings } from '../../services/audio/chip-settings';
 import type { PlaybackCarryState } from '../../services/audio/play-from-position';
 import { MixerWorkletBridge } from '../../services/audio/mixer-worklet-bridge';
+import { copyNesDpcmFields, type NesDpcmAssignment, type NesDpcmSample } from './dpcm';
+import type { NESInstrumentFields } from './instrument';
 
 export function sanitizeInstrumentForWorklet(instrument: Instrument) {
+	const extended = instrument as Instrument & Partial<NESInstrumentFields>;
+	const dpcmTarget: { dpcmSamples?: NesDpcmSample[]; dpcmAssignments?: (NesDpcmAssignment | null)[] } =
+		{};
+	copyNesDpcmFields(extended, dpcmTarget);
 	return {
 		id: instrument.id,
 		chipType: instrument.chipType,
@@ -25,7 +31,8 @@ export function sanitizeInstrumentForWorklet(instrument: Instrument) {
 						{ values: [...macro.values], loop: macro.loop }
 					])
 				)
-			: undefined
+			: undefined,
+		...(dpcmTarget.dpcmSamples?.length ? dpcmTarget : {})
 	};
 }
 

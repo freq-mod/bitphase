@@ -14,7 +14,12 @@ function createDefaultChannel() {
 		noiseMode: false,
 		volumeReg: NES_REGISTER_UNCHANGED,
 		lengthNibble: NES_REGISTER_UNCHANGED,
-		linearReg: NES_REGISTER_UNCHANGED
+		linearReg: NES_REGISTER_UNCHANGED,
+		dpcmPitch: 15,
+		dpcmLoop: false,
+		dpcmDelta: null,
+		dpcmLengthReg: 0,
+		dpcmBytes: null
 	};
 }
 

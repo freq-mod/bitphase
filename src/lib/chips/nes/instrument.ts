@@ -1,5 +1,5 @@
 import type { Instrument } from '../../models/song';
-import { copyInstrumentSampleFields } from '../ay/sample-region';
+import { copyNesDpcmFields, type NesDpcmAssignment, type NesDpcmSample } from './dpcm';
 
 export const NES_PULSE_WIDTHS = [0, 1, 2, 3] as const;
 
@@ -44,15 +44,8 @@ export type NesInstrumentRow = {
 };
 
 export type NESInstrumentFields = {
-
-	sampleData?: number[];
-	sampleRate?: number;
-	sampleStart?: number;
-	sampleEnd?: number;
-	sampleLoopStart?: number;
-	sampleLength?: number;
-	sampleLoopEnabled?: boolean;
-	sampleLoop?: number;
+	dpcmSamples?: NesDpcmSample[];
+	dpcmAssignments?: (NesDpcmAssignment | null)[];
 };
 
 export function isNesVolumeField(envelope: boolean): boolean {
@@ -241,5 +234,5 @@ export function copyNesInstrumentFields(
 			])
 		);
 	}
-	copyInstrumentSampleFields(source, target);
+	copyNesDpcmFields(source, target);
 }

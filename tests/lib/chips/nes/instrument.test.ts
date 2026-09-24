@@ -123,19 +123,20 @@ describe('nes instrument', () => {
 		expect(usesTriangleLinearCounter(200)).toBe(false);
 	});
 
-	it('copies DPCM sample data onto the destination instrument', () => {
+	it('copies DPCM samples and key assignments onto the destination instrument', () => {
 		const source = Object.assign(new Instrument('01', 'Kick', 'nes'), {
-			sampleData: [4, 5, 6],
-			sampleRate: 33144,
-			sampleStart: 0,
-			sampleEnd: 2,
-			sampleLoopStart: 1
+			dpcmSamples: [{ name: 'kick', data: [4, 5, 6] }],
+			dpcmAssignments: [{ sampleIndex: 0, pitch: 15, loop: true, delta: 32 }]
 		});
 		const target = new Instrument('02', 'Copy', 'nes');
 		copyNesInstrumentFields(source, target);
-		expect((target as Instrument & { sampleData?: number[] }).sampleData).toEqual([4, 5, 6]);
-		expect((target as Instrument & { sampleData?: number[] }).sampleData).not.toBe(
-			source.sampleData
-		);
+		const copied = target as Instrument & {
+			dpcmSamples?: { name: string; data: number[] }[];
+			dpcmAssignments?: ({ sampleIndex: number } | null)[];
+		};
+		expect(copied.dpcmSamples?.[0].data).toEqual([4, 5, 6]);
+		expect(copied.dpcmSamples?.[0].data).not.toBe(source.dpcmSamples[0].data);
+		expect(copied.dpcmAssignments?.[0]).toMatchObject({ sampleIndex: 0, pitch: 15, loop: true, delta: 32 });
+		expect(copied.dpcmAssignments).toHaveLength(96);
 	});
 });

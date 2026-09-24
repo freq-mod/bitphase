@@ -6,9 +6,11 @@ import {
 	NES_SQUARE_LENGTH_NIBBLE,
 	NES_TRIANGLE_LINEAR_RELOAD,
 	NES_APU_OUTPUT_SCALE,
+	NES_APU_STATUS_DPCM,
 	NES_APU_STATUS_PULSE,
 	NES_APU_STATUS_TRIANGLE_NOISE
 } from './nes-constants.js';
+import { NES_DPCM_WINDOW_SIZE, dpcmLengthRegister } from './nes-dpcm.js';
 import {
 	buildNoiseSilentVolumeReg,
 	buildSquareSilentVolumeReg,
@@ -44,8 +46,9 @@ function buildApuOutputMask(registerState) {
 	return mask;
 }
 
-function buildDmcOutputMask(_registerState) {
-	return 4;
+function buildDmcOutputMask(registerState) {
+	const dpcm = registerState.channels[4];
+	return dpcm?.enabled ? 0 : 4;
 }
 
 class NesApuEngine {
@@ -65,6 +68,7 @@ class NesApuEngine {
 		this._lastDmcOutputMask = -1;
 		this._lastOutput = { left: 0, right: 0 };
 		this._scopeRawOut = [0, 0, 0, 0, 0];
+		this.sampleMemPtr = 0;
 	}
 
 	setCpuFrequency(frequency) {
@@ -343,7 +347,20 @@ class NesApuEngine {
 			this.wasmModule.nes_apu_Write(this.apuPtr, 0x4015, NES_APU_STATUS_PULSE);
 			this._lastApu4015 = NES_APU_STATUS_PULSE;
 		}
-		if (forceApply || this._lastDmc4015 !== NES_APU_STATUS_TRIANGLE_NOISE) {
+		const dpcmChannel = registerState.channels[4];
+		const dpcmRetrigger = Boolean(
+			dpcmChannel?.enabled && (dpcmChannel.retrigger || forceApply)
+		);
+		if (
+			!dpcmChannel?.enabled &&
+			(forceApply || this._lastDmc4015 !== NES_APU_STATUS_TRIANGLE_NOISE)
+		) {
+			this.wasmModule.nes_dmc_Write(this.dmcPtr, 0x4015, NES_APU_STATUS_TRIANGLE_NOISE);
+			this._lastDmc4015 = NES_APU_STATUS_TRIANGLE_NOISE;
+		} else if (
+			dpcmRetrigger &&
+			this._lastDmc4015 !== NES_APU_STATUS_TRIANGLE_NOISE
+		) {
 			this.wasmModule.nes_dmc_Write(this.dmcPtr, 0x4015, NES_APU_STATUS_TRIANGLE_NOISE);
 			this._lastDmc4015 = NES_APU_STATUS_TRIANGLE_NOISE;
 		}
@@ -372,7 +389,47 @@ class NesApuEngine {
 		this._writeNoise(noiseChannel, forceApply, noiseTrigger);
 		noiseLast.enabled = noiseActive;
 
+		this._writeDpcm(dpcmChannel, dpcmRetrigger);
+		if (dpcmChannel) {
+			this.lastState.channels[4].enabled = Boolean(dpcmChannel.enabled);
+			this.lastState.channels[4].retrigger = false;
+		}
+
 		this._applyOutputMasks(registerState, forceApply);
+	}
+
+	_loadDpcmSample(bytes) {
+		if (!this.sampleMemPtr || !bytes?.length) return 0;
+		const memory = this.wasmModule.memory?.buffer;
+		if (!memory) return dpcmLengthRegister(bytes.length);
+		const heap = new Uint8Array(memory, this.sampleMemPtr, NES_DPCM_WINDOW_SIZE);
+		heap.fill(0);
+		const count = Math.min(bytes.length, NES_DPCM_WINDOW_SIZE);
+		for (let i = 0; i < count; i++) {
+			heap[i] = bytes[i] & 0xff;
+		}
+		return dpcmLengthRegister(bytes.length);
+	}
+
+	_writeDpcm(channel, retrigger) {
+		if (!channel?.enabled) return;
+		if (!retrigger) return;
+		const lengthReg = this._loadDpcmSample(channel.dpcmBytes) || (channel.dpcmLengthReg & 0xff);
+		const pitch = channel.dpcmPitch & 15;
+		const loopBit = channel.dpcmLoop ? 0x40 : 0;
+		if (channel.dpcmDelta != null && channel.dpcmDelta >= 0) {
+			this.wasmModule.nes_dmc_Write(this.dmcPtr, 0x4011, channel.dpcmDelta & 127);
+		}
+		this.wasmModule.nes_dmc_Write(this.dmcPtr, 0x4010, loopBit | pitch);
+		this.wasmModule.nes_dmc_Write(this.dmcPtr, 0x4012, 0);
+		this.wasmModule.nes_dmc_Write(this.dmcPtr, 0x4013, lengthReg);
+		this.wasmModule.nes_dmc_Write(this.dmcPtr, 0x4015, NES_APU_STATUS_TRIANGLE_NOISE);
+		this.wasmModule.nes_dmc_Write(
+			this.dmcPtr,
+			0x4015,
+			NES_APU_STATUS_TRIANGLE_NOISE | NES_APU_STATUS_DPCM
+		);
+		this._lastDmc4015 = NES_APU_STATUS_TRIANGLE_NOISE | NES_APU_STATUS_DPCM;
 	}
 
 	process(sampleRate) {
@@ -424,6 +481,10 @@ class NesApuEngine {
 			this.wasmModule.free(this.outputPtr);
 			this.outputPtr = 0;
 		}
+		if (this.sampleMemPtr) {
+			this.wasmModule.free(this.sampleMemPtr);
+			this.sampleMemPtr = 0;
+		}
 	}
 }
 
@@ -443,6 +504,11 @@ export function createNesApuEngine(wasmModule) {
 	wasmModule.nes_dmc_SetStereoMix(dmcPtr, 1, 128, 128);
 	wasmModule.nes_dmc_SetStereoMix(dmcPtr, 2, 128, 128);
 	const engine = new NesApuEngine(wasmModule, apuPtr, dmcPtr);
+	if (typeof wasmModule.nes_dmc_SetSampleMemory === 'function' && typeof wasmModule.malloc === 'function') {
+		const sampleMemPtr = wasmModule.malloc(NES_DPCM_WINDOW_SIZE);
+		wasmModule.nes_dmc_SetSampleMemory(dmcPtr, sampleMemPtr, NES_DPCM_WINDOW_SIZE);
+		engine.sampleMemPtr = sampleMemPtr;
+	}
 	engine.reset();
 	return { engine, apuPtr, dmcPtr };
 }

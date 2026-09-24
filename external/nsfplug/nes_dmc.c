@@ -43,6 +43,7 @@ uint32_t tnd_table[2][16][16][128];
 static uint32_t calc_tri (nes_dmc_t* s, uint32_t clocks);
 static uint32_t calc_dmc (nes_dmc_t* s, uint32_t clocks);
 static uint32_t calc_noise (nes_dmc_t* s, uint32_t clocks);
+static bool nes_dmc_read_memory (nes_dmc_t* s, uint32_t address, uint32_t* val);
 
 void nes_dmc_Init (nes_dmc_t* s)
 {
@@ -60,6 +61,9 @@ void nes_dmc_Init (nes_dmc_t* s)
   tnd_table[1][0][0][0] = 0;
 
   s->apu = NULL;
+  s->memory_Read = NULL;
+  s->sample_mem = NULL;
+  s->sample_mem_size = 0;
   s->frame_sequence_count = 0;
   s->frame_sequence_length = 7458;
   s->frame_sequence_steps = 4;
@@ -257,7 +261,7 @@ uint32_t calc_dmc (nes_dmc_t* s, uint32_t clocks)
     {
       if (s->dlength > 0)
       {
-        s->memory_Read (s->daddress, &s->data);
+        nes_dmc_read_memory (s, s->daddress, &s->data);
         // cpu->StealCycles(4); // DMC read takes 3 or 4 CPU cycles, usually 4
         // (checking for the 3-cycle case would require sub-instruction emulation)
         s->data &= 0xFF; // read 8 bits
@@ -506,6 +510,35 @@ void nes_dmc_Reset (nes_dmc_t* s)
 void nes_dmc_SetMemory_Read (nes_dmc_t* s, read_func * r)
 {
   s->memory_Read = r;
+}
+
+void nes_dmc_SetSampleMemory (nes_dmc_t* s, uint8_t* mem, uint32_t size)
+{
+  s->sample_mem = mem;
+  s->sample_mem_size = size;
+}
+
+uint32_t nes_dmc_StructSize (void)
+{
+  return (uint32_t)sizeof(nes_dmc_t);
+}
+
+static bool nes_dmc_read_memory (nes_dmc_t* s, uint32_t address, uint32_t* val)
+{
+  uint32_t cpu = address & 0xFFFFu;
+  if (s->sample_mem != NULL && cpu >= 0xC000u)
+  {
+    uint32_t index = cpu - 0xC000u;
+    if (index < s->sample_mem_size)
+    {
+      *val = s->sample_mem[index];
+      return true;
+    }
+  }
+  if (s->memory_Read)
+    return s->memory_Read(address, val);
+  *val = 0;
+  return false;
 }
 
 void nes_dmc_SetOption (nes_dmc_t* s, int id, int val)

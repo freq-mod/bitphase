@@ -14,7 +14,6 @@
 	import type { NESInstrumentFields } from './instrument';
 	import PillTabs, { type PillTab } from '../../components/PillTabs/PillTabs.svelte';
 	import NESInstrumentSamplePanel from './NESInstrumentSamplePanel.svelte';
-	import { instrumentHasSample } from '../ay/sample-region';
 	import { NES_APU_MACRO_FIELDS } from './apu-macros';
 	import InstrumentMacrosEditor from '../../components/Instruments/InstrumentMacrosEditor.svelte';
 
@@ -35,10 +34,9 @@
 	let activeTab = $state<InstrumentTab>('apu');
 
 	const extendedInstrument = $derived(instrument as Instrument & Partial<NESInstrumentFields>);
-	const hasSample = $derived(instrumentHasSample(extendedInstrument));
 
 	const instrumentTabs = $derived.by((): PillTab[] => [
-		{ id: 'apu', label: 'APU', icon: IconCarbonVolumeUp, disabled: hasSample },
+		{ id: 'apu', label: 'APU', icon: IconCarbonVolumeUp },
 		{ id: 'dpcm', label: 'DPCM', icon: IconCarbonWaveform }
 	]);
 
@@ -55,11 +53,6 @@
 		soundLength: IconCarbonTime
 	};
 
-	$effect(() => {
-		if (hasSample && activeTab !== 'dpcm') {
-			activeTab = 'dpcm';
-		}
-	});
 </script>
 
 <div class="w-full max-w-full min-w-0 overflow-x-auto outline-none focus:outline-none" tabindex="-1">
@@ -74,8 +67,8 @@
 		}} />
 
 	{#if activeTab === 'dpcm'}
-		<div class="mt-3 mr-2 ml-2 box-border min-w-0">
-			<NESInstrumentSamplePanel {instrument} {isExpanded} {onInstrumentChange} />
+		<div class="mt-3 mr-2 ml-2 box-border min-w-0 overflow-x-hidden">
+			<NESInstrumentSamplePanel instrument={extendedInstrument} {asHex} {onInstrumentChange} />
 		</div>
 	{:else}
 		<InstrumentMacrosEditor

@@ -170,7 +170,7 @@ describe('NesWorkletSlot preview', () => {
 		expect(slot.channelWaveformBuf[0][0]).toBe(0);
 	});
 
-	it('keeps DPCM scope flat while the channel is not implemented', () => {
+	it('draws the DPCM scope from the emulator output', () => {
 		const slot = createPreviewSlot();
 		slot.paused = false;
 		slot.state.channelMuted[4] = false;
@@ -183,7 +183,7 @@ describe('NesWorkletSlot preview', () => {
 
 		slot.accumulateStereoOutput(0, { l: 0, r: 0 });
 
-		expect(slot.channelWaveformBuf[4][0]).toBe(0);
+		expect(slot.channelWaveformBuf[4][0]).toBeCloseTo(0.3);
 	});
 
 	it('still mixes audio while paused without writing scope samples', () => {

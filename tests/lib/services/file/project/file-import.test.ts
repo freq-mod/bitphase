@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { FileImportService } from '@/lib/services/file/project/file-import';
+import { FileExportService } from '@/lib/services/file/project/file-export';
 import { normalizeAyInstrumentFields, sampleTimerRowFromInstrument } from '@/lib/chips/ay/instrument';
 import { decodeTimerWaveform } from '@/lib/chips/ay/ay-timer-macros';
 import { Instrument } from '@/lib/models/song';
@@ -425,5 +426,40 @@ describe('FileImportService', () => {
 		expect(project.songs[0]?.patterns[0]?.channels[0]?.effectColumnCount).toBe(2);
 		expect(project.songs[0]?.patterns[1]?.channels[0]?.effectColumnCount).toBe(2);
 		expect(project.songs[0]?.patterns[1]?.channels[0]?.rows[0]?.effects).toHaveLength(2);
+	});
+
+	it('drops a saved chip schema and reloads the schema for the song chip', async () => {
+		const json = JSON.stringify({
+			name: 'nes',
+			author: '',
+			songs: [
+				{
+					chipType: 'nes',
+					tuningTable: [100],
+					schema: {
+						chipType: 'ay',
+						defaultTuningTable: [1, 2, 3],
+						channelLabels: ['X']
+					},
+					patterns: []
+				}
+			],
+			patternOrder: [0],
+			tables: [],
+			instruments: []
+		});
+
+		const project = await FileImportService.reconstructFromJsonAsync(json);
+		const song = project.songs[0]!;
+
+		expect(song.getSchema()?.chipType).toBe('nes');
+		expect(song.getSchema()?.channelLabels?.[0]).toBe('Pulse 1');
+		expect(song.tuningTable).toEqual([100]);
+
+		const saved = JSON.parse(FileExportService.serializeProject(project)) as {
+			songs: { schema?: unknown; tuningTable: number[] }[];
+		};
+		expect(saved.songs[0]?.schema).toBeUndefined();
+		expect(saved.songs[0]?.tuningTable).toEqual([100]);
 	});
 });

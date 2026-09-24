@@ -404,7 +404,8 @@ export class NesWorkletSlot extends TrackerWorkletSlot {
 			if (hwType === 2) {
 				levels[i] = channel.enabled ? 1 : 0;
 			} else if (hwType === 4) {
-				levels[i] = Math.min(1, (channel.volume ?? 0) / 127);
+				const raw = channel.dpcmDelta == null ? (hwPeaks[hwType] ?? 0) : (channel.volume ?? 0);
+				levels[i] = Math.min(1, raw / 127);
 			} else if (isNesHardwareEnvelopeReg(channel?.volumeReg) && canReadOutputs) {
 				levels[i] = Math.min(1, Math.max(0, (hwPeaks[hwType] ?? 0) / 15));
 			} else {
@@ -437,7 +438,6 @@ export class NesWorkletSlot extends TrackerWorkletSlot {
 
 	_captureHardwareWaveformSample(channelIndex, channel, emulatorOutputs, cpuFrequency) {
 		if (this._isHardwareChannelMuted(channelIndex)) return 0;
-		if (channelIndex === 4) return 0;
 
 		if (channelIndex === 3) {
 			const rawOut = this.apuEngine?.getChannelRawOut?.(3) ?? 0;

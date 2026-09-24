@@ -15,6 +15,11 @@ function copyNesChannelFields(src, dst) {
 	dst.volumeReg = src.volumeReg;
 	dst.lengthNibble = src.lengthNibble;
 	dst.linearReg = src.linearReg;
+	dst.dpcmPitch = src.dpcmPitch;
+	dst.dpcmLoop = src.dpcmLoop;
+	dst.dpcmDelta = src.dpcmDelta;
+	dst.dpcmLengthReg = src.dpcmLengthReg;
+	dst.dpcmBytes = src.dpcmBytes;
 }
 
 function createNesVirtualChannelAdapters() {

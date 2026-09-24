@@ -82,12 +82,17 @@ typedef struct nes_dmc
   bool frame_irq_enable;
 
   // NES_CPU* cpu; // IRQ needs CPU access
+
+  uint8_t* sample_mem;
+  uint32_t sample_mem_size;
 } nes_dmc_t;
 
 void nes_dmc_InitializeTNDTable(double wt, double wn, double wd);
 void nes_dmc_SetPal (nes_dmc_t* s, bool is_pal);
 void nes_dmc_SetAPU (nes_dmc_t* s, nes_apu_t* apu_);
 void nes_dmc_SetMemory_Read (nes_dmc_t* s, read_func* r);
+void nes_dmc_SetSampleMemory (nes_dmc_t* s, uint8_t* mem, uint32_t size);
+uint32_t nes_dmc_StructSize (void);
 void nes_dmc_FrameSequence(nes_dmc_t* s, int seq);
 int nes_dmc_GetDamp(nes_dmc_t* s);
 void nes_dmc_TickFrameSequence (nes_dmc_t* s, uint32_t clocks);

@@ -37,18 +37,17 @@ describe('HistoryClone.instrument', () => {
 		expect(source.color).toBe('#ff00aa');
 	});
 
-	it('copies sample data for NES instruments', () => {
+	it('copies DPCM samples for NES instruments', () => {
 		const source = Object.assign(new Instrument('02', 'Kick', 'nes'), {
-			sampleData: [1, 2],
-			sampleRate: 33144,
-			sampleStart: 0,
-			sampleEnd: 1,
-			sampleLoopStart: 0
+			dpcmSamples: [{ name: 'kick', data: [1, 2] }],
+			dpcmAssignments: [{ sampleIndex: 0, pitch: 15, loop: false, delta: 0 }]
 		});
-		const cloned = HistoryClone.instrument(source) as Instrument & { sampleData?: number[] };
+		const cloned = HistoryClone.instrument(source) as Instrument & {
+			dpcmSamples?: { data: number[] }[];
+		};
 
 		expect(cloned.chipType).toBe('nes');
-		expect(cloned.sampleData).toEqual([1, 2]);
-		expect(cloned.sampleData).not.toBe(source.sampleData);
+		expect(cloned.dpcmSamples?.[0].data).toEqual([1, 2]);
+		expect(cloned.dpcmSamples?.[0].data).not.toBe(source.dpcmSamples[0].data);
 	});
 });

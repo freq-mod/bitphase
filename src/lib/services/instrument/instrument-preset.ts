@@ -1,6 +1,12 @@
 import { Instrument } from '../../models/song';
 import { migrateLegacyInstrument, type LegacyInstrument } from '../instrument/instrument-legacy-migration';
 import { parseHexColor } from '../../utils/hex-color';
+import {
+	copyNesDpcmFields,
+	normalizeDpcmSamples,
+	type NesDpcmAssignment,
+	type NesDpcmSample
+} from '../../chips/nes/dpcm';
 
 type InstrumentMacroBag = Record<string, { values: (boolean | number | string)[]; loop: number }>;
 
@@ -24,6 +30,8 @@ export type InstrumentPresetPayload = {
 	sampleEnd?: number;
 	sampleLoopStart?: number;
 	sampleLoopEnabled?: boolean;
+	dpcmSamples?: NesDpcmSample[];
+	dpcmAssignments?: (NesDpcmAssignment | null)[];
 };
 
 type PresetInstrument = Instrument & {
@@ -40,6 +48,8 @@ type PresetInstrument = Instrument & {
 	sampleEnd?: number;
 	sampleLoopStart?: number;
 	sampleLoopEnabled?: boolean;
+	dpcmSamples?: NesDpcmSample[];
+	dpcmAssignments?: (NesDpcmAssignment | null)[];
 };
 
 function cloneMacros(macros: InstrumentMacroBag): InstrumentMacroBag {
@@ -53,6 +63,8 @@ function cloneMacros(macros: InstrumentMacroBag): InstrumentMacroBag {
 
 export function serializeInstrumentPreset(instrument: Instrument): InstrumentPresetPayload {
 	const extra = instrument as PresetInstrument;
+	const dpcm: Pick<InstrumentPresetPayload, 'dpcmSamples' | 'dpcmAssignments'> = {};
+	copyNesDpcmFields(extra, dpcm);
 	return {
 		chipType: instrument.chipType,
 		name: instrument.name,
@@ -74,7 +86,8 @@ export function serializeInstrumentPreset(instrument: Instrument): InstrumentPre
 		...(extra.sampleStart !== undefined ? { sampleStart: extra.sampleStart } : {}),
 		...(extra.sampleEnd !== undefined ? { sampleEnd: extra.sampleEnd } : {}),
 		...(extra.sampleLoopStart !== undefined ? { sampleLoopStart: extra.sampleLoopStart } : {}),
-		...(extra.sampleLoopEnabled !== undefined ? { sampleLoopEnabled: extra.sampleLoopEnabled } : {})
+		...(extra.sampleLoopEnabled !== undefined ? { sampleLoopEnabled: extra.sampleLoopEnabled } : {}),
+		...(dpcm.dpcmSamples?.length ? dpcm : {})
 	};
 }
 
@@ -89,8 +102,11 @@ export function parseInstrumentPreset(parsed: unknown): InstrumentPresetPayload 
 	const sampleData = parseSampleData(record.sampleData);
 	const pwm = parsePwmFields(record);
 	const sample = parseSampleFields(record, sampleData);
+	const dpcmSamples = normalizeDpcmSamples(record.dpcmSamples);
 	const color = typeof record.color === 'string' ? parseHexColor(record.color) : null;
-	if (!rows && !macros && !timerMacros && !sampleData && Object.keys(pwm).length === 0) return null;
+	if (!rows && !macros && !timerMacros && !sampleData && dpcmSamples.length === 0 && Object.keys(pwm).length === 0) {
+		return null;
+	}
 
 	return {
 		...(typeof record.chipType === 'string' ? { chipType: record.chipType } : {}),
@@ -101,7 +117,15 @@ export function parseInstrumentPreset(parsed: unknown): InstrumentPresetPayload 
 		...(macros ? { macros } : {}),
 		...(timerMacros ? { timerMacros } : {}),
 		...pwm,
-		...sample
+		...sample,
+		...(dpcmSamples.length
+			? {
+					dpcmSamples,
+					dpcmAssignments: Array.isArray(record.dpcmAssignments)
+						? (record.dpcmAssignments as (NesDpcmAssignment | null)[])
+						: undefined
+				}
+			: {})
 	};
 }
 
@@ -225,6 +249,9 @@ export function instrumentFromPreset(
 	if (payload.sampleEnd !== undefined) extras.sampleEnd = payload.sampleEnd;
 	if (payload.sampleLoopStart !== undefined) extras.sampleLoopStart = payload.sampleLoopStart;
 	if (payload.sampleLoopEnabled !== undefined) extras.sampleLoopEnabled = payload.sampleLoopEnabled;
+	if (payload.dpcmSamples?.length) {
+		copyNesDpcmFields(payload, extras as { dpcmSamples?: NesDpcmSample[]; dpcmAssignments?: (NesDpcmAssignment | null)[] });
+	}
 	return migrateLegacyInstrument({ ...instrument, ...extras });
 }
 

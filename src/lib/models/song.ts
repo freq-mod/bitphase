@@ -178,10 +178,10 @@ class Song {
 	public tuningTableIndex?: number;
 	public a4TuningHz?: number;
 	public virtualChannelMap: Record<number, number> = {};
-	private schema?: ChipSchema;
+	#schema?: ChipSchema;
 
 	constructor(schema?: ChipSchema) {
-		this.schema = schema;
+		this.#schema = schema;
 		this.initialSpeed = 3;
 		this.defaultPatternLength = DEFAULT_PATTERN_LENGTH;
 		this.patterns = [new Pattern(0, this.defaultPatternLength, schema)];
@@ -190,22 +190,22 @@ class Song {
 	}
 
 	setSchema(schema: ChipSchema): void {
-		this.schema = schema;
+		this.#schema = schema;
 	}
 
 	getSchema(): ChipSchema | undefined {
-		return this.schema;
+		return this.#schema;
 	}
 
 	getEffectiveChannelLabels(): string[] {
-		const hwLabels = this.schema?.channelLabels ?? ['A', 'B', 'C'];
+		const hwLabels = this.#schema?.channelLabels ?? ['A', 'B', 'C'];
 		return computeEffectiveChannelLabels(hwLabels, this.virtualChannelMap);
 	}
 
 	addPattern(): Pattern {
 		const newId = this.patterns.length;
 		const effectiveLabels = this.getEffectiveChannelLabels();
-		const pattern = new Pattern(newId, this.defaultPatternLength, this.schema, effectiveLabels);
+		const pattern = new Pattern(newId, this.defaultPatternLength, this.#schema, effectiveLabels);
 		if (this.patterns.length > 0) {
 			applySharedEffectColumnCounts(pattern, getSharedEffectColumnCounts(this.patterns));
 		}
