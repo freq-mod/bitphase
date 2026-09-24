@@ -43,6 +43,14 @@ function resolveNesNoisePeriodFromSemitoneOffset(semitoneOffset) {
 	return NES_NOISE_PERIOD_COUNT - 1 - wrapped;
 }
 
+function calculateNesNoiseVolume(patternVolume, instrumentVolume) {
+	const pattern = Math.max(0, Math.min(15, patternVolume | 0));
+	const instrument = Math.max(0, Math.min(15, instrumentVolume | 0));
+	const volume = ((instrument * pattern) / 15) | 0;
+	if (volume === 0 && instrument > 0 && pattern > 0) return 1;
+	return volume;
+}
+
 class NesAudioDriver {
 	constructor() {
 		this.resolveHardwareChannel = null;
@@ -109,7 +117,11 @@ class NesAudioDriver {
 	}
 
 	_applyEnvelopeAndLength(channel, channelIndex, row, patternVolume, state) {
-		const combinedVolume = this.calculateVolume(patternVolume, row.volumeOrRate);
+		const hwType = this._getHardwareChannelType(channelIndex);
+		const combinedVolume =
+			hwType === 3
+				? calculateNesNoiseVolume(patternVolume, row.volumeOrRate)
+				: this.calculateVolume(patternVolume, row.volumeOrRate);
 		const volumeNibble = resolveEnvelopeVolumeOrRate(
 			row.envelope,
 			patternVolume,
@@ -117,7 +129,6 @@ class NesAudioDriver {
 			combinedVolume
 		);
 		channel.volume = combinedVolume;
-		const hwType = this._getHardwareChannelType(channelIndex);
 
 		if (hwType <= 1) {
 			const pulseWidth =
@@ -146,7 +157,7 @@ class NesAudioDriver {
 				volumeNibble,
 				row.soundLength
 			);
-			channel.noiseMode = row.pulseWidth > 0;
+			channel.noiseMode = (row.pulseWidth & 1) !== 0;
 			channel.lengthNibble = buildLengthCounterNibble(row.soundLength);
 			channel.linearReg = NES_REGISTER_UNCHANGED;
 		}
@@ -162,8 +173,7 @@ class NesAudioDriver {
 		}
 	}
 
-	_applyToneOffset(state, channelIndex, instrumentRow, basePeriod) {
-		if (basePeriod <= 0) return 0;
+	_sampleToneOffset(state, channelIndex, instrumentRow) {
 		let sampleTone = state.channelToneAccumulator[channelIndex] ?? 0;
 		if (instrumentRow.toneAdd !== 0) {
 			sampleTone += instrumentRow.toneAdd;
@@ -171,7 +181,12 @@ class NesAudioDriver {
 		if (instrumentRow.toneAccumulation) {
 			state.channelToneAccumulator[channelIndex] = sampleTone;
 		}
-		const period = basePeriod + sampleTone;
+		return sampleTone;
+	}
+
+	_applyToneOffset(state, channelIndex, instrumentRow, basePeriod) {
+		if (basePeriod <= 0) return 0;
+		const period = basePeriod + this._sampleToneOffset(state, channelIndex, instrumentRow);
 		if (period < 0) return 0;
 		if (period > 2047) return 2047;
 		return period;
@@ -210,12 +225,12 @@ class NesAudioDriver {
 		return getEffectiveTuningPeriod(state, channelIndex, 2048);
 	}
 
-	resolveNoisePeriod(state, channelIndex) {
+	resolveNoisePeriod(state, channelIndex, toneOffset = 0) {
 		const noteIndex = state.channelCurrentNotes[channelIndex];
 		const toneSliding = state.channelToneSliding?.[channelIndex] || 0;
 		const vibratoSliding = state.channelVibratoSliding?.[channelIndex] || 0;
 		const detune = state.channelDetune?.[channelIndex] || 0;
-		const semitoneOffset = noteIndex + toneSliding + vibratoSliding + detune;
+		const semitoneOffset = noteIndex + toneSliding + vibratoSliding + detune + toneOffset;
 		return resolveNesNoisePeriodFromSemitoneOffset(semitoneOffset);
 	}
 
@@ -276,12 +291,17 @@ class NesAudioDriver {
 
 			const row = this.resolveInstrumentRow(state, channelIndex);
 			const patternVolume = state.channelPatternVolumes[channelIndex] ?? 15;
-			const combinedVolume = this.calculateVolume(patternVolume, row.volumeOrRate);
+			const combinedVolume =
+				hwType === 3
+					? calculateNesNoiseVolume(patternVolume, row.volumeOrRate)
+					: this.calculateVolume(patternVolume, row.volumeOrRate);
 			const basePeriod = this.getEffectivePeriod(state, channelIndex);
 			const period =
 				hwType <= 2
 					? this._applyToneOffset(state, channelIndex, row, basePeriod)
 					: basePeriod;
+			const noiseToneOffset =
+				hwType === 3 ? this._sampleToneOffset(state, channelIndex, row) : 0;
 			const keyOn = state.channelKeyOn[channelIndex];
 
 			this._applyEnvelopeAndLength(channel, channelIndex, row, patternVolume, state);
@@ -304,7 +324,7 @@ class NesAudioDriver {
 				state.channelKeyOn[channelIndex] = false;
 			} else if (hwType === 3) {
 				channel.enabled = audible;
-				channel.noisePeriod = this.resolveNoisePeriod(state, channelIndex);
+				channel.noisePeriod = this.resolveNoisePeriod(state, channelIndex, noiseToneOffset);
 				channel.retrigger = row.retrigger || keyOn;
 				state.channelKeyOn[channelIndex] = false;
 			} else {

@@ -80,5 +80,70 @@ describe('NesAudioDriver noise period', () => {
 		driver.processInstruments(state, registerState);
 
 		expect(registerState.channels[3].noisePeriod).toBe(15);
+		expect(registerState.channels[3].noiseMode).toBe(false);
+	});
+
+	it('uses duty bit 0 as the noise mode', () => {
+		const driver = new NesAudioDriver();
+		const registerState = new NesChipRegisterState();
+		const state = noiseState({ pulseWidth: 1 });
+
+		driver.processInstruments(state, registerState);
+
+		expect(registerState.channels[3].noiseMode).toBe(true);
+	});
+
+	it('steps the noise period with the pitch sequence', () => {
+		const driver = new NesAudioDriver();
+		const registerState = new NesChipRegisterState();
+		const state = noiseState({ toneAdd: 1, toneAccumulation: true });
+
+		driver.processInstruments(state, registerState);
+		expect(registerState.channels[3].noisePeriod).toBe(14);
+
+		driver.processInstruments(state, registerState);
+		expect(registerState.channels[3].noisePeriod).toBe(13);
+	});
+
+	it('scales noise volume as instrument times column over 15', () => {
+		const driver = new NesAudioDriver();
+		const registerState = new NesChipRegisterState();
+		const state = noiseState({ volumeOrRate: 8 });
+		state.channelPatternVolumes[3] = 7;
+
+		driver.processInstruments(state, registerState);
+
+		expect(registerState.channels[3].volume).toBe(3);
 	});
 });
+
+function noiseState(rowOverrides) {
+	return {
+		channelMuted: [false, false, false, false, false],
+		channelSoundEnabled: [false, false, false, true, false],
+		channelInstruments: [-1, -1, -1, 0, -1],
+		instruments: [
+			{
+				macros: {
+					pulseWidth: { values: [rowOverrides.pulseWidth ?? 2], loop: 0 },
+					volumeOrRate: { values: [rowOverrides.volumeOrRate ?? 15], loop: 0 },
+					toneAdd: { values: [rowOverrides.toneAdd ?? 0], loop: 0 },
+					toneAccumulation: { values: [rowOverrides.toneAccumulation ?? false], loop: 0 },
+					envelope: { values: [false], loop: 0 }
+				}
+			}
+		],
+		instrumentPositions: [0, 0, 0, 0, 0],
+		channelPatternVolumes: [15, 15, 15, 15, 15],
+		channelCurrentNotes: [0, 0, 0, 0, 0],
+		currentTuningTable: Array.from({ length: 96 }, (_, i) => 400 + i),
+		channelToneSliding: [0, 0, 0, 0, 0],
+		channelVibratoSliding: [0, 0, 0, 0, 0],
+		channelDetune: [0, 0, 0, 0, 0],
+		channelKeyOn: [false, false, false, false, false],
+		channelToneAccumulator: [0, 0, 0, 0, 0],
+		channelOnOffCounter: [0, 0, 0, 0, 0],
+		channelOnDuration: [0, 0, 0, 0, 0],
+		channelOffDuration: [0, 0, 0, 0, 0]
+	};
+}
