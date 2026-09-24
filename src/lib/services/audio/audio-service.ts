@@ -11,6 +11,7 @@ import { channelMuteStore } from '../../stores/channel-mute.svelte';
 import { waveformStore } from '../../stores/waveform.svelte';
 import { playbackToneDebugStore } from '../../stores/playback-tone-debug.svelte';
 import { filterInstrumentsForChip } from '../instrument/instrument-filter';
+import { withWasmCacheKey } from '../../chips/base/resource-loader';
 
 const BITPHASE_AUDIO_PROCESSOR = 'bitphase-audio-processor';
 const BITPHASE_AUDIO_MODULE = 'audio/bitphase-audio-processor.js';
@@ -67,11 +68,12 @@ export class AudioService {
 	}
 
 	private async _loadWasm(url: string): Promise<ArrayBuffer> {
-		let buf = this._wasmByUrl.get(url);
+		const requestUrl = withWasmCacheKey(url);
+		let buf = this._wasmByUrl.get(requestUrl);
 		if (!buf) {
-			const res = await fetch(import.meta.env.BASE_URL + url);
+			const res = await fetch(import.meta.env.BASE_URL + requestUrl);
 			buf = await res.arrayBuffer();
-			this._wasmByUrl.set(url, buf);
+			this._wasmByUrl.set(requestUrl, buf);
 		}
 		return buf.slice(0);
 	}
