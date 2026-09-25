@@ -2,25 +2,26 @@
 	import IconCarbonDocumentImport from '~icons/carbon/document-import';
 	import IconCarbonRenew from '~icons/carbon/renew';
 	import IconCarbonTrashCan from '~icons/carbon/trash-can';
-	import IconCarbonWaveform from '~icons/carbon/waveform';
 	import type { Instrument } from '../../models/song';
 	import { projectStore } from '../../stores/project.svelte';
-	import { EmptyState } from '../../components/EmptyState';
 	import type { NESInstrumentFields } from './instrument';
 	import {
 		NES_DPCM_BANK_BYTES,
 		NES_DPCM_MAX_BYTES,
+		NES_DPCM_NOTE_COUNT,
 		createDpcmAssignment,
 		dpcmNoteLabel,
 		dpcmSpaceUsedBytes,
 		formatDpcmSpaceUsage,
-		encodePcm8ToDpcm,
+		importPcm8AsDpcm,
 		normalizeDpcmAssignments,
 		padDpcmBytes,
 		type NesDpcmAssignment,
 		type NesDpcmSample
 	} from './dpcm';
 	import { decodeAudioSampleFile, InstrumentSampleTooLargeError } from '../../utils/audio-sample-decode';
+
+	const noteIndexes = Array.from({ length: NES_DPCM_NOTE_COUNT }, (_, index) => index);
 
 	let {
 		instrument,
@@ -35,7 +36,7 @@
 	let fileInputEl: HTMLInputElement | null = $state(null);
 	let isLoading = $state(false);
 	let loadError = $state<string | null>(null);
-	let octave = $state(1);
+	let importQuality = $state(15);
 
 	const samples = $derived(instrument.dpcmSamples ?? []);
 	const usedBytes = $derived(dpcmSpaceUsedBytes(projectStore.instruments, instrument));
@@ -43,10 +44,6 @@
 	const assignments = $derived(
 		normalizeDpcmAssignments(instrument.dpcmAssignments, samples.length)
 	);
-	const octaveNotes = $derived.by(() => {
-		const start = (octave - 1) * 12;
-		return Array.from({ length: 12 }, (_, index) => start + index);
-	});
 
 	function commit(
 		nextSamples: NesDpcmSample[],
@@ -119,8 +116,9 @@
 		if (file.name.toLowerCase().endsWith('.dmc')) {
 			return new Uint8Array(await file.arrayBuffer());
 		}
-		const decoded = await decodeAudioSampleFile(file);
-		return Uint8Array.from(encodePcm8ToDpcm(decoded.data));
+		const decoded = await decodeAudioSampleFile(file, null);
+		const imported = importPcm8AsDpcm(decoded.data, decoded.sampleRate, importQuality);
+		return Uint8Array.from(imported.data);
 	}
 </script>
 
@@ -131,157 +129,149 @@
 	class="hidden"
 	onchange={handleFileSelect} />
 
-<div class="box-border flex w-full min-w-0 flex-col gap-3 py-1">
-	<div class="flex flex-wrap items-center gap-2">
-		<button
-			type="button"
-			class="flex cursor-pointer items-center gap-1.5 rounded-md border border-[var(--color-app-border)] bg-[var(--color-app-surface-secondary)] px-3 py-1.5 text-xs font-medium text-[var(--color-app-text-secondary)] transition-colors hover:border-[var(--color-app-primary)]/40 hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-app-text-primary)] disabled:pointer-events-none disabled:opacity-60"
-			disabled={isLoading}
-			onclick={openFilePicker}>
-			{#if isLoading}
-				<IconCarbonRenew class="h-3.5 w-3.5 shrink-0 animate-spin" />
-				Loading…
-			{:else}
-				<IconCarbonDocumentImport class="h-3.5 w-3.5 shrink-0" />
-				Load sample
-			{/if}
-		</button>
-		<label class="flex items-center gap-2 text-xs text-[var(--color-app-text-secondary)]">
-			Octave
-			<select
-				class="rounded-md border border-[var(--color-app-border)] bg-[var(--color-app-surface-secondary)] px-2 py-1 font-mono text-xs text-[var(--color-app-text-primary)]"
-				value={octave}
-				onchange={(event) => {
-					octave = Number((event.currentTarget as HTMLSelectElement).value);
-				}}>
-				{#each Array.from({ length: 8 }, (_, index) => index + 1) as octaveNumber (octaveNumber)}
-					<option value={octaveNumber}>{octaveNumber}</option>
+<div class="box-border grid h-full min-h-0 w-full min-w-0 grid-rows-[minmax(0,1fr)_auto] gap-3 py-1 lg:grid-cols-[minmax(0,1fr)_12.5rem] lg:grid-rows-1">
+	<section class="flex min-h-0 min-w-0 flex-col">
+		<div
+			class="grid shrink-0 grid-cols-[2.5rem_minmax(0,1fr)_2.5rem_1.75rem_2.75rem] items-center gap-x-1 bg-[var(--color-app-surface)] px-0.5 pb-0.5 text-[10px] text-[var(--color-app-text-tertiary)]">
+			<span>Key</span>
+			<span>Sample</span>
+			<span>Pitch</span>
+			<span>Loop</span>
+			<span>Delta</span>
+		</div>
+		<div class="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+		{#each noteIndexes as noteIndex (noteIndex)}
+			{@const assignment = assignments[noteIndex]}
+			<div
+				class="grid grid-cols-[2.5rem_minmax(0,1fr)_2.5rem_1.75rem_2.75rem] items-center gap-x-1 border-t border-[var(--color-app-border)] px-0.5 py-0.5">
+				<span class="font-mono text-[11px] text-[var(--color-app-text-primary)]">{dpcmNoteLabel(noteIndex)}</span>
+				<select
+					class="w-full min-w-0 rounded border border-[var(--color-app-border)] bg-[var(--color-app-surface-secondary)] px-1 py-0.5 font-mono text-[11px]"
+					value={assignment ? String(assignment.sampleIndex) : ''}
+					onchange={(event) => {
+						const value = (event.currentTarget as HTMLSelectElement).value;
+						if (value === '') {
+							updateAssignment(noteIndex, null);
+							return;
+						}
+						updateAssignment(noteIndex, { sampleIndex: Number(value) });
+					}}>
+					<option value="">—</option>
+					{#each samples as sample, sampleIndex (sampleIndex)}
+						<option value={String(sampleIndex)}>
+							{sampleIndex.toString(16).toUpperCase().padStart(2, '0')} {sample.name}
+						</option>
+					{/each}
+				</select>
+				<select
+					class="w-full min-w-0 rounded border border-[var(--color-app-border)] bg-[var(--color-app-surface-secondary)] px-1 py-0.5 font-mono text-[11px] disabled:opacity-40"
+					disabled={!assignment}
+					value={assignment?.pitch ?? 15}
+					onchange={(event) => {
+						updateAssignment(noteIndex, {
+							pitch: Number((event.currentTarget as HTMLSelectElement).value)
+						});
+					}}>
+					{#each Array.from({ length: 16 }, (_, pitch) => pitch) as pitch (pitch)}
+						<option value={pitch}>{asHex ? pitch.toString(16).toUpperCase() : String(pitch)}</option>
+					{/each}
+				</select>
+				<input
+					type="checkbox"
+					class="justify-self-start"
+					disabled={!assignment}
+					checked={assignment?.loop ?? false}
+					onchange={(event) => {
+						updateAssignment(noteIndex, {
+							loop: (event.currentTarget as HTMLInputElement).checked
+						});
+					}} />
+				<select
+					class="w-full min-w-0 rounded border border-[var(--color-app-border)] bg-[var(--color-app-surface-secondary)] px-1 py-0.5 font-mono text-[11px] disabled:opacity-40"
+					disabled={!assignment}
+					value={assignment?.delta == null ? '' : String(assignment.delta)}
+					onchange={(event) => {
+						const value = (event.currentTarget as HTMLSelectElement).value;
+						updateAssignment(noteIndex, {
+							delta: value === '' ? null : Number(value)
+						});
+					}}>
+					<option value="">Off</option>
+					{#each Array.from({ length: 128 }, (_, delta) => delta) as delta (delta)}
+						<option value={delta}>
+							{asHex ? delta.toString(16).toUpperCase().padStart(2, '0') : String(delta)}
+						</option>
+					{/each}
+				</select>
+			</div>
+		{/each}
+		</div>
+	</section>
+
+	<section class="flex min-h-0 min-w-0 flex-col gap-1.5 lg:overflow-hidden">
+		<div class="flex flex-wrap items-center gap-1.5">
+			<button
+				type="button"
+				class="flex cursor-pointer items-center gap-1.5 rounded-md border border-[var(--color-app-border)] bg-[var(--color-app-surface-secondary)] px-2 py-1 text-[11px] font-medium text-[var(--color-app-text-secondary)] transition-colors hover:border-[var(--color-app-primary)]/40 hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-app-text-primary)] disabled:pointer-events-none disabled:opacity-60"
+				disabled={isLoading}
+				onclick={openFilePicker}>
+				{#if isLoading}
+					<IconCarbonRenew class="h-3.5 w-3.5 shrink-0 animate-spin" />
+					Loading…
+				{:else}
+					<IconCarbonDocumentImport class="h-3.5 w-3.5 shrink-0" />
+					Load
+				{/if}
+			</button>
+			<label class="flex items-center gap-1.5 text-[11px] text-[var(--color-app-text-secondary)]">
+				Quality
+				<select
+					class="rounded border border-[var(--color-app-border)] bg-[var(--color-app-surface-secondary)] px-1.5 py-0.5 font-mono text-[11px] text-[var(--color-app-text-primary)]"
+					value={importQuality}
+					onchange={(event) => {
+						importQuality = Number((event.currentTarget as HTMLSelectElement).value);
+					}}>
+					{#each Array.from({ length: 16 }, (_, index) => 15 - index) as quality (quality)}
+						<option value={quality}>{quality}</option>
+					{/each}
+				</select>
+			</label>
+		</div>
+		{#if loadError}
+			<p class="text-[11px] text-[var(--color-pattern-note-off)]">{loadError}</p>
+		{/if}
+		{#if samples.length === 0}
+			<p class="text-[11px] text-[var(--color-app-text-muted)]">
+				Load a .dmc or WAV. A longer WAV is cut at {NES_DPCM_MAX_BYTES.toLocaleString()} bytes.
+			</p>
+		{:else}
+			<ul class="flex max-h-40 min-h-0 flex-col gap-0.5 overflow-y-auto overscroll-contain lg:max-h-none lg:flex-1">
+				{#each samples as sample, sampleIndex (sampleIndex)}
+					<li
+						class="flex items-center justify-between gap-1 rounded border border-[var(--color-app-border)] bg-[var(--color-app-surface-secondary)]/80 px-1.5 py-0.5">
+						<span class="min-w-0 truncate font-mono text-[11px] text-[var(--color-app-text-primary)]">
+							{sampleIndex.toString(16).toUpperCase().padStart(2, '0')} {sample.name}
+							<span class="text-[var(--color-app-text-muted)]">{sample.data.length}</span>
+						</span>
+						<button
+							type="button"
+							class="cursor-pointer border-0 bg-transparent p-0.5 text-[var(--color-app-text-tertiary)] hover:text-[var(--color-pattern-note-off)]"
+							onclick={() => removeSample(sampleIndex)}
+							aria-label="Remove sample">
+							<IconCarbonTrashCan class="h-3.5 w-3.5" />
+						</button>
+					</li>
 				{/each}
-			</select>
-		</label>
-	</div>
-
-	{#if loadError}
-		<p class="text-xs text-[var(--color-pattern-note-off)]">{loadError}</p>
-	{/if}
-
-	{#if samples.length === 0}
-		<EmptyState
-			icon={IconCarbonWaveform}
-			message="Load a DPCM sample, then bind it to keys"
-			hint=".dmc bytes, or a short 8-bit WAV converted to 1-bit deltas. Hardware plays at most {NES_DPCM_MAX_BYTES.toLocaleString()} bytes."
-			class="min-w-0" />
-	{:else}
-		<ul class="flex flex-col gap-1">
-			{#each samples as sample, sampleIndex (sampleIndex)}
-				<li
-					class="flex items-center justify-between gap-2 rounded-md border border-[var(--color-app-border)] bg-[var(--color-app-surface-secondary)]/80 px-3 py-1.5">
-					<span class="truncate font-mono text-xs text-[var(--color-app-text-primary)]">
-						{sampleIndex.toString(16).toUpperCase().padStart(2, '0')} {sample.name}
-						<span class="text-[var(--color-app-text-muted)]">({sample.data.length} bytes)</span>
-					</span>
-					<button
-						type="button"
-						class="cursor-pointer border-0 bg-transparent p-1 text-[var(--color-app-text-tertiary)] hover:text-[var(--color-pattern-note-off)]"
-						onclick={() => removeSample(sampleIndex)}
-						aria-label="Remove sample">
-						<IconCarbonTrashCan class="h-3.5 w-3.5" />
-					</button>
-				</li>
-			{/each}
-		</ul>
+			</ul>
+		{/if}
 		<p
 			class={[
-				'text-[11px]',
+				'shrink-0 text-[11px]',
 				usedBytes > NES_DPCM_BANK_BYTES
 					? 'text-[var(--color-pattern-note-off)]'
 					: 'text-[var(--color-app-text-muted)]'
 			]}>
 			{spaceUsage}
 		</p>
-
-		<div class="min-w-0 text-xs">
-			<div
-				class="grid grid-cols-[minmax(0,2.75rem)_minmax(0,1fr)_minmax(0,3.25rem)_minmax(0,2.25rem)_minmax(0,3.25rem)] items-center gap-x-1.5 px-1 py-1 text-[var(--color-app-text-tertiary)]">
-				<span>Key</span>
-				<span>Sample</span>
-				<span>Pitch</span>
-				<span>Loop</span>
-				<span>Delta</span>
-			</div>
-			{#each octaveNotes as noteIndex (noteIndex)}
-				{@const assignment = assignments[noteIndex]}
-				<div
-					class="grid grid-cols-[minmax(0,2.75rem)_minmax(0,1fr)_minmax(0,3.25rem)_minmax(0,2.25rem)_minmax(0,3.25rem)] items-center gap-x-1.5 border-t border-[var(--color-app-border)] px-1 py-1">
-					<span class="font-mono text-[var(--color-app-text-primary)]">{dpcmNoteLabel(noteIndex)}</span>
-					<div class="min-w-0 overflow-hidden">
-					<select
-						class="w-full min-w-0 rounded-md border border-[var(--color-app-border)] bg-[var(--color-app-surface-secondary)] px-1.5 py-1 font-mono text-xs"
-						value={assignment ? String(assignment.sampleIndex) : ''}
-						onchange={(event) => {
-							const value = (event.currentTarget as HTMLSelectElement).value;
-							if (value === '') {
-								updateAssignment(noteIndex, null);
-								return;
-							}
-							updateAssignment(noteIndex, { sampleIndex: Number(value) });
-						}}>
-						<option value="">—</option>
-						{#each samples as sample, sampleIndex (sampleIndex)}
-							<option value={String(sampleIndex)}>
-								{sampleIndex.toString(16).toUpperCase().padStart(2, '0')} {sample.name}
-							</option>
-						{/each}
-					</select>
-					</div>
-					<div class="min-w-0 overflow-hidden">
-					<select
-						class="w-full min-w-0 rounded-md border border-[var(--color-app-border)] bg-[var(--color-app-surface-secondary)] px-1 py-1 font-mono text-xs disabled:opacity-40"
-						disabled={!assignment}
-						value={assignment?.pitch ?? 15}
-						onchange={(event) => {
-							updateAssignment(noteIndex, {
-								pitch: Number((event.currentTarget as HTMLSelectElement).value)
-							});
-						}}>
-						{#each Array.from({ length: 16 }, (_, pitch) => pitch) as pitch (pitch)}
-							<option value={pitch}>
-								{asHex ? pitch.toString(16).toUpperCase() : String(pitch)}
-							</option>
-						{/each}
-					</select>
-					</div>
-					<input
-						type="checkbox"
-						class="justify-self-start"
-						disabled={!assignment}
-						checked={assignment?.loop ?? false}
-						onchange={(event) => {
-							updateAssignment(noteIndex, {
-								loop: (event.currentTarget as HTMLInputElement).checked
-							});
-						}} />
-					<div class="min-w-0 overflow-hidden">
-					<select
-						class="w-full min-w-0 rounded-md border border-[var(--color-app-border)] bg-[var(--color-app-surface-secondary)] px-1 py-1 font-mono text-xs disabled:opacity-40"
-						disabled={!assignment}
-						value={assignment?.delta == null ? '' : String(assignment.delta)}
-						onchange={(event) => {
-							const value = (event.currentTarget as HTMLSelectElement).value;
-							updateAssignment(noteIndex, {
-								delta: value === '' ? null : Number(value)
-							});
-						}}>
-						<option value="">Off</option>
-						{#each Array.from({ length: 128 }, (_, delta) => delta) as delta (delta)}
-							<option value={delta}>
-								{asHex ? delta.toString(16).toUpperCase().padStart(2, '0') : String(delta)}
-							</option>
-						{/each}
-					</select>
-					</div>
-				</div>
-			{/each}
-		</div>
-	{/if}
+	</section>
 </div>

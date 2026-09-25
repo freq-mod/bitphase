@@ -223,9 +223,12 @@ function normalizePeaksInPlace(peaks: WaveformPeak[]): WaveformPeak[] {
 function buildDecodedAudioSample(
 	fileName: string,
 	sourceData: Uint8Array,
-	sourceSampleRate: number
+	sourceSampleRate: number,
+	maxBytes: number | null
 ): DecodedAudioSample {
-	assertInstrumentSampleByteLength(sourceData.length);
+	if (maxBytes != null && sourceData.length > maxBytes) {
+		assertInstrumentSampleByteLength(sourceData.length);
+	}
 	const peaks = normalizeWaveformPeaksForDisplay(buildWaveformPeaksFromUint8Mono(sourceData));
 
 	return {
@@ -376,12 +379,15 @@ export async function convertAudioBufferToUint8MonoAndPeaks(
 	return { data, peaks };
 }
 
-export async function decodeAudioSampleFile(file: File): Promise<DecodedAudioSample> {
+export async function decodeAudioSampleFile(
+	file: File,
+	maxBytes: number | null = MAX_INSTRUMENT_SAMPLE_BYTES
+): Promise<DecodedAudioSample> {
 	const arrayBuffer = await file.arrayBuffer();
 
 	const wavParsed = tryParseWavPcmMono(arrayBuffer);
 	if (wavParsed) {
-		return buildDecodedAudioSample(file.name, wavParsed.data, wavParsed.sampleRate);
+		return buildDecodedAudioSample(file.name, wavParsed.data, wavParsed.sampleRate, maxBytes);
 	}
 
 	const audioContext = getDecodeAudioContext();
@@ -397,7 +403,8 @@ export async function decodeAudioSampleFile(file: File): Promise<DecodedAudioSam
 	return buildDecodedAudioSample(
 		file.name,
 		floatMonoToUint8Mono(sourceMono),
-		audioBuffer.sampleRate
+		audioBuffer.sampleRate,
+		maxBytes
 	);
 }
 

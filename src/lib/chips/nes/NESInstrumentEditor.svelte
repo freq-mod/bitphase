@@ -55,11 +55,16 @@
 
 </script>
 
-<div class="w-full max-w-full min-w-0 overflow-x-auto outline-none focus:outline-none" tabindex="-1">
+<div
+	class={[
+		'w-full max-w-full min-w-0 outline-none focus:outline-none',
+		activeTab === 'dpcm' ? 'flex h-full min-h-0 flex-col overflow-hidden' : 'overflow-x-auto'
+	]}
+	tabindex="-1">
 	<InstrumentEditorIdentity {instrument} {onInstrumentChange} />
 
 	<PillTabs
-		class="mt-3 ml-2"
+		class="mt-3 ml-2 shrink-0"
 		bind:activeTabId={activeTab}
 		tabs={instrumentTabs}
 		onSelect={(tabId) => {
@@ -67,7 +72,7 @@
 		}} />
 
 	{#if activeTab === 'dpcm'}
-		<div class="mt-3 mr-2 ml-2 box-border min-w-0 overflow-x-hidden">
+		<div class="mt-3 mr-2 ml-2 box-border flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
 			<NESInstrumentSamplePanel instrument={extendedInstrument} {asHex} {onInstrumentChange} />
 		</div>
 	{:else}

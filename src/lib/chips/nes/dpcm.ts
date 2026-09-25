@@ -1,7 +1,12 @@
+import { NES_NTSC_CPU_FREQUENCY } from './schema';
+
 export const NES_DPCM_NOTE_COUNT = 96;
 export const NES_DPCM_RATE_COUNT = 16;
 export const NES_DPCM_MAX_BYTES = (0xff << 4) + 1;
 export const NES_DPCM_BANK_BYTES = 256 * 1024;
+export const NES_DPCM_NTSC_PERIODS = [
+	428, 380, 340, 320, 286, 254, 226, 214, 190, 160, 142, 128, 106, 84, 72, 54
+] as const;
 
 export const NES_DPCM_NOTE_NAMES = [
 	'C-',
@@ -85,10 +90,12 @@ export function formatDpcmSpaceUsage(
 	usedBytes: number,
 	availableBytes = NES_DPCM_BANK_BYTES
 ): string {
-	const usedKb = Math.floor(Math.max(0, usedBytes) / 1024);
-	const leftKb = Math.max(0, Math.floor((availableBytes - usedBytes) / 1024));
+	const used = Math.max(0, usedBytes);
+	const left = Math.max(0, availableBytes - used);
+	const usedKb = Math.floor(used / 1024);
+	const leftKb = Math.floor(left / 1024);
 	const availableKb = Math.floor(availableBytes / 1024);
-	return `Space used ${usedKb} kB, left ${leftKb} kB (${availableKb} kB available)`;
+	return `Space used ${usedKb} kB (${used.toLocaleString()} bytes), left ${leftKb} kB (${availableKb} kB available)`;
 }
 
 export function instrumentHasDpcm(
@@ -122,6 +129,46 @@ export function encodePcm8ToDpcm(pcm: Uint8Array): number[] {
 	}
 	if (bit > 0) bytes.push(current);
 	return padDpcmBytes(bytes);
+}
+
+export function nesDpcmSampleRate(quality: number): number {
+	const pitch = Math.max(0, Math.min(NES_DPCM_RATE_COUNT - 1, Math.round(quality)));
+	return NES_NTSC_CPU_FREQUENCY / NES_DPCM_NTSC_PERIODS[pitch];
+}
+
+export function resamplePcm8ToDpcmRate(
+	pcm: Uint8Array,
+	sourceRate: number,
+	quality: number
+): { pcm: Uint8Array; truncated: boolean } {
+	const maxSamples = NES_DPCM_MAX_BYTES * 8;
+	if (pcm.length === 0 || !(sourceRate > 0)) {
+		return { pcm: new Uint8Array(0), truncated: false };
+	}
+	const targetRate = nesDpcmSampleRate(quality);
+	const fullLength = Math.max(0, Math.round((pcm.length * targetRate) / sourceRate));
+	const truncated = fullLength > maxSamples;
+	const length = Math.min(fullLength, maxSamples);
+	const out = new Uint8Array(length);
+	const step = sourceRate / targetRate;
+	const last = pcm.length - 1;
+	for (let i = 0; i < length; i++) {
+		const position = i * step;
+		const index = Math.min(last, Math.floor(position));
+		const next = Math.min(last, index + 1);
+		const fraction = position - index;
+		out[i] = Math.round(pcm[index] + (pcm[next] - pcm[index]) * fraction);
+	}
+	return { pcm: out, truncated };
+}
+
+export function importPcm8AsDpcm(
+	pcm: Uint8Array,
+	sourceRate: number,
+	quality: number
+): { data: number[]; truncated: boolean } {
+	const resampled = resamplePcm8ToDpcmRate(pcm, sourceRate, quality);
+	return { data: encodePcm8ToDpcm(resampled.pcm), truncated: resampled.truncated };
 }
 
 export function normalizeDpcmSamples(value: unknown): NesDpcmSample[] {
