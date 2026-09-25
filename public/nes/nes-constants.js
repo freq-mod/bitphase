@@ -13,5 +13,5 @@ export const NES_APU_STATUS_PULSE = 0x03;
 export const NES_APU_STATUS_TRIANGLE_NOISE = 0x0c;
 export const NES_APU_STATUS_DPCM = 0x10;
 
-export const NES_APU_OUTPUT_GAIN = 3.2;
+export const NES_APU_OUTPUT_GAIN = 2.0;
 export const NES_APU_OUTPUT_SCALE = NES_APU_OUTPUT_GAIN / 8192;
