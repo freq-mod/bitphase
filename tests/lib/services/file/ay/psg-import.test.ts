@@ -93,7 +93,8 @@ describe('PSG import', () => {
 		expect(song.chipVariant).toBe('AY');
 		expect(song.chipFrequency).toBe(DEFAULT_PSG_CLOCK_HZ);
 		expect(song.interruptFrequency).toBe(DEFAULT_PSG_FRAME_RATE_HZ);
-		expect(song.initialSpeed).toBe(1);
+		expect(project.initialSpeed).toBe(1);
+		expect(project.tempo).toBe(0);
 		expect(song.patterns[0]!.patternRows).toHaveLength(FRAMES.length);
 	});
 

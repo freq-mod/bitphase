@@ -93,6 +93,51 @@ describe('projectStore.addSong', () => {
 		expect(projectStore.patterns).toHaveLength(0);
 	});
 
+	it('copies interrupt frequency onto the next song', () => {
+		const aySong = new Song(AY_CHIP_SCHEMA);
+		aySong.chipType = 'ay';
+		aySong.interruptFrequency = 60;
+		const nesSong = new Song(NES_CHIP_SCHEMA);
+		nesSong.chipType = 'nes';
+		nesSong.interruptFrequency = 50;
+
+		projectStore.addSong(aySong);
+		projectStore.addSong(nesSong);
+
+		expect(projectStore.songs[0].interruptFrequency).toBe(60);
+		expect(projectStore.songs[1].interruptFrequency).toBe(60);
+		expect(projectStore.settings.interruptFrequency).toBe(60);
+	});
+
+	it('seeds tempo from the first song interrupt rate', () => {
+		const song = new Song(AY_CHIP_SCHEMA);
+		song.chipType = 'ay';
+		song.interruptFrequency = 60;
+
+		projectStore.addSong(song);
+
+		expect(projectStore.getTempo()).toBe(150);
+		expect(projectStore.getInitialSpeed()).toBe(3);
+	});
+
+	it('keeps an explicit tempo when another song is added', () => {
+		const first = new Song(AY_CHIP_SCHEMA);
+		first.chipType = 'ay';
+		first.interruptFrequency = 50;
+		projectStore.addSong(first);
+		projectStore.settings.tempo = 0;
+
+		const second = new Song(NES_CHIP_SCHEMA);
+		second.chipType = 'nes';
+		second.interruptFrequency = 60;
+		projectStore.addSong(second);
+
+		expect(projectStore.getTempo()).toBe(0);
+		const saved = projectStore.getCurrentProject();
+		expect(saved.tempo).toBe(0);
+		expect(saved.initialSpeed).toBe(3);
+	});
+
 	it('keeps existing song patterns when adding another song', () => {
 		const aySong = new Song(AY_CHIP_SCHEMA);
 		aySong.chipType = 'ay';

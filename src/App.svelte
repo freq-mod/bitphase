@@ -180,6 +180,13 @@
 		if (projectStore.songs.length === 0) return;
 
 		ProjectService.ensureChipSettingsConsistency(projectStore.songs);
+		const sharedInterruptFrequency = projectStore.songs[0]?.interruptFrequency;
+		if (
+			sharedInterruptFrequency > 0 &&
+			projectStore.settings.interruptFrequency !== sharedInterruptFrequency
+		) {
+			projectStore.settings.interruptFrequency = sharedInterruptFrequency;
+		}
 
 		const grouped = new Map<string, Song[]>();
 		for (const song of projectStore.songs) {
@@ -204,7 +211,10 @@
 				...PROJECT_FIELDS.filter((s) => s.notifyAudioService)
 			];
 			settings.forEach((s) => {
-				const value = firstSong[s.key] ?? s.defaultValue;
+				const value =
+					s.group === 'project'
+						? (projectStore.settings[s.key] ?? s.defaultValue)
+						: (firstSong[s.key] ?? s.defaultValue);
 				if (value !== undefined) {
 					container.audioService.chipSettings.forChip(chipType).set(s.key, value);
 				}

@@ -419,6 +419,7 @@ export function importFtmBuffer(buffer: ArrayBuffer, fallbackName = ''): FtmImpo
 	}
 
 	const firstOrder = songs[0]!.patterns.map((pattern) => pattern.id);
+	const firstTrack = frames[0]!;
 	return {
 		project: new Project(
 			info.title || fallbackName,
@@ -428,7 +429,9 @@ export function importFtmBuffer(buffer: ArrayBuffer, fallbackName = ''): FtmImpo
 			firstOrder.length > 0 ? firstOrder : [0],
 			arpTables.tables,
 			{},
-			projectInstruments
+			projectInstruments,
+			firstTrack.speed >= 1 && firstTrack.speed <= 255 ? Math.floor(firstTrack.speed) : 3,
+			firstTrack.tempo > 0 && firstTrack.tempo <= 255 ? Math.floor(firstTrack.tempo) : 0
 		),
 		warnings
 	};
@@ -1226,14 +1229,12 @@ function toSong(
 	const song = new Song(NES_CHIP_SCHEMA);
 	song.chipType = 'nes';
 	song.chipVariant = params.machine;
-	song.initialSpeed = track.speed;
 	song.defaultPatternLength = track.patternLength;
 	song.a4TuningHz = 440;
 	applySchemaDefaults(song, NES_CHIP_SCHEMA);
 	song.chipVariant = params.machine;
 	song.chipFrequency = resolveNesCpuFrequency(params.machine);
 	song.interruptFrequency = params.engineHz;
-	song.tempo = track.tempo > 0 ? track.tempo : 0;
 	song.tuningTable = resolveNesTuningTable(song.chipFrequency, song.a4TuningHz);
 
 	const latchedInstrument = Array.from({ length: NES_CHANNEL_COUNT }, () => -1);
@@ -1297,7 +1298,6 @@ function toAySong(
 	const song = new Song(AY_CHIP_SCHEMA);
 	song.chipType = 'ay';
 	song.chipVariant = 'YM';
-	song.initialSpeed = track.speed;
 	song.defaultPatternLength = track.patternLength;
 	applySchemaDefaults(song, AY_CHIP_SCHEMA);
 	song.chipVariant = 'YM';
@@ -1305,7 +1305,6 @@ function toAySong(
 	song.tuningTableIndex = 5;
 	song.a4TuningHz = 440;
 	song.interruptFrequency = params.engineHz;
-	song.tempo = track.tempo > 0 ? track.tempo : 0;
 	song.tuningTable = resolveAYTuningTable(5, SUNSOFT_5B_CHIP_FREQUENCY, 440);
 
 	const latchedInstrument = Array.from({ length: S5B_CHANNEL_COUNT }, () => -1);

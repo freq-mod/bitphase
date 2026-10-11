@@ -36,14 +36,9 @@
 	const activePatterns = $derived(patternLists[songIndex] ?? []);
 	const timelinePatterns = $derived(patternLists[TIMELINE_SONG_INDEX] ?? []);
 	const tables = $derived(projectStore.tables ?? []);
-	const speed = $derived(projectStore.songs[TIMELINE_SONG_INDEX]?.initialSpeed ?? 3);
-	const interruptFrequency = $derived(
-		projectStore.songs[TIMELINE_SONG_INDEX]?.interruptFrequency ?? 50
-	);
-	const tempo = $derived.by(() => {
-		const value = Number(projectStore.settings.tempo);
-		return Number.isFinite(value) && value > 0 ? Math.floor(value) : 0;
-	});
+	const speed = $derived(projectStore.getInitialSpeed());
+	const interruptFrequency = $derived(projectStore.getInterruptFrequency());
+	const tempo = $derived(projectStore.getTempo());
 	const pattern = $derived(
 		activePatterns.find((p) => p.id === patternOrder[currentPatternOrderIndex]) ?? null
 	);

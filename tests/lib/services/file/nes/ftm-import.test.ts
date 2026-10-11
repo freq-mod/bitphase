@@ -260,9 +260,9 @@ describe('ftm import', () => {
 		const song = project.songs[0]!;
 		expect(song.chipType).toBe('nes');
 		expect(song.chipVariant).toBe('NTSC');
-		expect(song.initialSpeed).toBe(6);
+		expect(project.initialSpeed).toBe(6);
 		expect(song.interruptFrequency).toBe(60);
-		expect(song.tempo).toBe(150);
+		expect(project.tempo).toBe(150);
 		expect(warnings.some((warning) => warning.includes('tempo was not imported'))).toBe(false);
 		expect(song.patterns[0]!.length).toBe(4);
 
@@ -610,8 +610,8 @@ describe('dnm import', () => {
 		expect(ay.chipFrequency).toBe(894886);
 		expect(ay.tuningTableIndex).toBe(5);
 		expect(ay.tuningTable[45]).toBe(Math.round(894886 / 16 / 440));
-		expect(ay.initialSpeed).toBe(6);
-		expect(ay.tempo).toBe(150);
+		expect(project.initialSpeed).toBe(6);
+		expect(project.tempo).toBe(150);
 		expect(ay.interruptFrequency).toBe(60);
 		const ayRow = ay.patterns[0]!.channels[0]!.rows[0]!;
 		expect(ayRow.note).toMatchObject({ name: NoteName.C, octave: 3 });

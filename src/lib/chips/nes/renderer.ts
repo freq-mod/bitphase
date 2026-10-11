@@ -20,7 +20,7 @@ const DEFAULT_INTERRUPT_FREQUENCY = 50;
 
 type NesSlotLane = {
 	songIndex: number;
-	song: { patterns: Pattern[]; chipType?: string; chipVariant?: string; chipFrequency?: number; interruptFrequency?: number; initialSpeed?: number; tempo?: number; tuningTable: number[] };
+	song: { patterns: Pattern[]; chipType?: string; chipVariant?: string; chipFrequency?: number; interruptFrequency?: number; tuningTable: number[] };
 	state: {
 		currentPattern: Pattern | null;
 		timeline: {
@@ -170,8 +170,8 @@ export class NESChipRenderer implements ChipRenderer {
 		if (ownsSharedPlaybackTimeline) {
 			state.setIntFrequency(song.interruptFrequency ?? DEFAULT_INTERRUPT_FREQUENCY, SAMPLE_RATE);
 			state.setPatternOrder(project.patternOrder || [0], project.loopPointId || 0);
-			state.setSpeed(song.initialSpeed || DEFAULT_SPEED);
-			state.setTempo(song.tempo ?? 0);
+			state.setSpeed(project.initialSpeed || DEFAULT_SPEED);
+			state.setTempo(project.tempo ?? 0);
 			state.updateSamplesPerTick(SAMPLE_RATE);
 		}
 	}

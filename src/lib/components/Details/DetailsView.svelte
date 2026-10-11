@@ -18,6 +18,7 @@
 	import { getContext } from 'svelte';
 	import type { AudioService } from '../../services/audio/audio-service';
 	import { projectStore } from '../../stores/project.svelte';
+	import { ProjectService } from '../../services/project/project-service';
 
 	let {
 		chipProcessors,
@@ -118,22 +119,29 @@
 
 	function handleSettingChange(key: string, value: unknown, setting: ChipSetting) {
 		const beforeSettings = { ...settingsHistorySnapshot };
-		const beforeSongs = projectStore.cloneForHistory(projectStore.songs);
 		const normalized = setting.type === 'number' ? normalizeProjectNumber(value, setting) : value;
-		for (const song of songs) {
-			(song as unknown as Record<string, unknown>)[key] = normalized;
+		const writesSong = key !== 'initialSpeed' && key !== 'tempo';
+		const beforeSongs = writesSong ? projectStore.cloneForHistory(projectStore.songs) : null;
+		if (writesSong) {
+			for (const song of songs) {
+				(song as unknown as Record<string, unknown>)[key] = normalized;
+			}
 		}
+		projectStore.settings[key] = normalized;
 		settingsHistorySnapshot = { ...projectStore.settings };
+		const diffs = [
+			projectStore.createSetDiff(['settings'], beforeSettings, projectStore.settings)
+		];
+		if (writesSong && beforeSongs) {
+			diffs.push(projectStore.createSetDiff(['songs'], beforeSongs, projectStore.songs));
+		}
 		projectStore.recordHistory(
 			{
 				type: 'settings.update',
 				label: `Update ${setting.label}`,
-				affectedDomains: ['settings', 'songs']
+				affectedDomains: writesSong ? ['settings', 'songs'] : ['settings']
 			},
-			[
-				projectStore.createSetDiff(['settings'], beforeSettings, projectStore.settings),
-				projectStore.createSetDiff(['songs'], beforeSongs, projectStore.songs)
-			]
+			diffs
 		);
 		if (setting.notifyAudioService) {
 			for (const group of chipsByType) {
@@ -287,15 +295,36 @@
 		setting: ChipSetting
 	) {
 		const beforeSongs = projectStore.cloneForHistory(projectStore.songs);
+		const beforeSettings = { ...projectStore.settings };
 		const normalized = sanitizeChipSettingValue(setting, value);
-		const songsOfType = songs.filter((s) => s.chipType === chipType);
-		for (const song of songsOfType) {
-			(song as unknown as Record<string, unknown>)[key] = normalized;
+		const sharesInterruptFrequency =
+			key === 'interruptFrequency' && typeof normalized === 'number';
+		const songsOfType = sharesInterruptFrequency
+			? songs
+			: songs.filter((s) => s.chipType === chipType);
+		if (sharesInterruptFrequency) {
+			ProjectService.shareInterruptFrequency(songs, normalized);
+			projectStore.settings.interruptFrequency = normalized;
+		} else {
+			for (const song of songsOfType) {
+				(song as unknown as Record<string, unknown>)[key] = normalized;
+			}
 		}
-		chipSettingOverrides[chipType] = {
-			...(chipSettingOverrides[chipType] ?? {}),
-			[key]: normalized
-		};
+		if (sharesInterruptFrequency) {
+			const nextOverrides = { ...chipSettingOverrides };
+			for (const group of songsByChipType) {
+				nextOverrides[group.chipType] = {
+					...(nextOverrides[group.chipType] ?? {}),
+					interruptFrequency: normalized
+				};
+			}
+			chipSettingOverrides = nextOverrides;
+		} else {
+			chipSettingOverrides[chipType] = {
+				...(chipSettingOverrides[chipType] ?? {}),
+				[key]: normalized
+			};
+		}
 		if (projectContextKeys.includes(key)) {
 			projectContextState[key] = Number(normalized);
 		}
@@ -308,11 +337,16 @@
 		}
 
 		if (setting.notifyAudioService) {
-			const processors = chipsByType.find((g) => g.type === chipType)?.processors || [];
-			for (const processor of processors) {
-				processor.updateParameter(key, normalized);
+			const processorGroups = sharesInterruptFrequency
+				? chipsByType
+				: chipsByType.filter((group) => group.type === chipType);
+			for (const group of processorGroups) {
+				for (const processor of group.processors) {
+					processor.updateParameter(key, normalized);
+				}
+				services.audioService.chipSettings.forChip(group.type).set(key, normalized);
 			}
-			services.audioService.chipSettings.forChip(chipType).set(key, normalized);
+			const processors = chipsByType.find((group) => group.type === chipType)?.processors || [];
 
 			if (chip) {
 				const context = buildChipContext(chipType, chipSettings);
@@ -335,13 +369,21 @@
 				}
 			}
 		}
+		const diffs = [projectStore.createSetDiff(['songs'], beforeSongs, projectStore.songs)];
+		if (sharesInterruptFrequency) {
+			diffs.push(
+				projectStore.createSetDiff(['settings'], beforeSettings, projectStore.settings)
+			);
+		}
 		projectStore.recordHistory(
 			{
 				type: 'chipSettings.update',
 				label: `Update ${setting.label}`,
-				affectedDomains: ['chipSettings', 'songs']
+				affectedDomains: sharesInterruptFrequency
+					? ['chipSettings', 'songs', 'settings']
+					: ['chipSettings', 'songs']
 			},
-			[projectStore.createSetDiff(['songs'], beforeSongs, projectStore.songs)]
+			diffs
 		);
 	}
 

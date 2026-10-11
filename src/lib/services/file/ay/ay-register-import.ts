@@ -199,7 +199,6 @@ class AyRegisterSongBuilder {
 		song.chipVariant = this.input.chipVariant;
 		song.chipFrequency = this.clockHz();
 		song.interruptFrequency = this.input.frameRateHz;
-		song.initialSpeed = 1;
 		song.tuningTable = this.tuningTable;
 		song.tuningTableIndex = TUNING_TABLE_CUSTOM_INDEX;
 		song.a4TuningHz = DEFAULT_A4_HZ;

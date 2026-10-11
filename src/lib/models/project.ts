@@ -1,5 +1,19 @@
 import type { Song, Instrument } from './song';
 
+export const DEFAULT_INITIAL_SPEED = 3;
+
+export function normalizeInitialSpeed(value: unknown): number {
+	const speed = Number(value);
+	if (!Number.isFinite(speed) || speed < 1 || speed > 255) return DEFAULT_INITIAL_SPEED;
+	return Math.floor(speed);
+}
+
+export function normalizeTempo(value: unknown): number {
+	const tempo = Number(value);
+	if (!Number.isFinite(tempo) || tempo < 0 || tempo > 255) return 0;
+	return Math.floor(tempo);
+}
+
 class Project {
 	constructor(
 		public name: string = '',
@@ -9,7 +23,9 @@ class Project {
 		public patternOrder: number[] = [0],
 		public tables: Table[] = [new Table(0, [], 0, 'Table 1')],
 		public patternOrderColors: Record<number, string> = {},
-		public instruments: Instrument[] = []
+		public instruments: Instrument[] = [],
+		public initialSpeed: number = DEFAULT_INITIAL_SPEED,
+		public tempo: number = 0
 	) {}
 }
 

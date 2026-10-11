@@ -158,7 +158,7 @@
 		void tuningTableVersion;
 		return projectStore.songs[songIndex]?.tuningTable ?? [];
 	});
-	const speed = $derived(projectStore.songs[songIndex]?.initialSpeed ?? 3);
+	const speed = $derived(projectStore.getInitialSpeed());
 	const instruments = $derived(filterInstrumentsForChip(projectStore.instruments, chip.type));
 	const instrumentColorFingerprint = $derived(
 		[...instrumentColorsById(instruments)]
@@ -968,8 +968,7 @@
 				initAllChips?.();
 				discardPendingPlaybackPosition();
 
-				const defaultGetSpeed = (index: number) =>
-					projectStore.songs[index]?.initialSpeed ?? 3;
+				const defaultGetSpeed = () => projectStore.getInitialSpeed();
 
 				services.audioService.playFromRow(
 					0,

@@ -6,6 +6,43 @@ import { decodeTimerWaveform } from '@/lib/chips/ay/ay-timer-macros';
 import { Instrument } from '@/lib/models/song';
 
 describe('FileImportService', () => {
+	it('reads tempo and initial speed from the project', async () => {
+		const json = JSON.stringify({
+			name: 'clock',
+			author: '',
+			songs: [{ initialSpeed: 9, tempo: 200, patterns: [] }],
+			initialSpeed: 4,
+			tempo: 90,
+			patternOrder: [0],
+			tables: [],
+			instruments: []
+		});
+
+		const project = await FileImportService.reconstructFromJsonAsync(json);
+
+		expect(project.initialSpeed).toBe(4);
+		expect(project.tempo).toBe(90);
+	});
+
+	it('lifts tempo and initial speed from the first song of an older file', async () => {
+		const json = JSON.stringify({
+			name: 'legacy',
+			author: '',
+			songs: [
+				{ initialSpeed: 7, tempo: 140, patterns: [] },
+				{ initialSpeed: 2, tempo: 100, patterns: [] }
+			],
+			patternOrder: [0],
+			tables: [],
+			instruments: []
+		});
+
+		const project = await FileImportService.reconstructFromJsonAsync(json);
+
+		expect(project.initialSpeed).toBe(7);
+		expect(project.tempo).toBe(140);
+	});
+
 	it('preserves projects with zero songs', async () => {
 		const json = JSON.stringify({
 			name: 'empty',

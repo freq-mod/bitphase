@@ -94,7 +94,6 @@ describe('ProjectService', () => {
 			expect(song).toBeInstanceOf(Song);
 			expect(song.chipType).toBe(CHIP_TYPE_AY);
 			expect(song.interruptFrequency).toBe(50);
-			expect(song.tempo).toBe(125);
 		});
 
 		it('should add chip processor when creating new song', async () => {
@@ -106,26 +105,28 @@ describe('ProjectService', () => {
 			expect(mockAudioService.addChipProcessor).toHaveBeenCalledWith(mockChip);
 		});
 
-		it('should inherit tempo 0 from an existing song', async () => {
+		it('should share interrupt frequency with an existing song', async () => {
 			const mockChip = createMockChip();
 			const existing = new Song(mockChip.schema);
 			existing.chipType = CHIP_TYPE_AY;
-			existing.tempo = 0;
+			existing.interruptFrequency = 60;
 
 			const song = await projectService.createNewSong(mockChip, [existing]);
 
-			expect(song.tempo).toBe(0);
+			expect(song.interruptFrequency).toBe(60);
 		});
 
-		it('should inherit initialSpeed from an existing song', async () => {
-			const mockChip = createMockChip();
-			const existing = new Song(mockChip.schema);
-			existing.chipType = CHIP_TYPE_AY;
-			existing.initialSpeed = 12;
+		it('should copy interrupt frequency from the first song onto every chip', () => {
+			const ay = new Song();
+			ay.chipType = 'ay';
+			ay.interruptFrequency = 60;
+			const nes = new Song();
+			nes.chipType = 'nes';
+			nes.interruptFrequency = 50;
 
-			const song = await projectService.createNewSong(mockChip, [existing]);
+			ProjectService.ensureChipSettingsConsistency([ay, nes]);
 
-			expect(song.initialSpeed).toBe(12);
+			expect(nes.interruptFrequency).toBe(60);
 		});
 
 		it('should inherit defaultPatternLength from an existing song', async () => {

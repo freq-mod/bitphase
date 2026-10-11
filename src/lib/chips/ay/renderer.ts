@@ -201,8 +201,8 @@ export class AYChipRenderer implements ChipRenderer {
 		if (ownsSharedPlaybackTimeline) {
 			state.setIntFrequency(interruptFrequency, SAMPLE_RATE);
 			state.setPatternOrder(project.patternOrder || [0], project.loopPointId || 0);
-			state.setSpeed(song.initialSpeed || DEFAULT_SPEED);
-			state.setTempo(song.tempo ?? 0);
+			state.setSpeed(project.initialSpeed || DEFAULT_SPEED);
+			state.setTempo(project.tempo ?? 0);
 			state.updateSamplesPerTick(SAMPLE_RATE);
 		}
 	}

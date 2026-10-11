@@ -1,6 +1,6 @@
 import type { Song, Instrument, Pattern } from '../models/song';
 import { DEFAULT_PATTERN_LENGTH, Instrument as InstrumentModel, tempoForInterruptFrequency } from '../models/song';
-import { Project, Table } from '../models/project';
+import { Project, Table, normalizeInitialSpeed, normalizeTempo } from '../models/project';
 import {
 	filterInstrumentsForActiveChipTypes,
 	resolveInstrumentChipType
@@ -26,6 +26,7 @@ class ProjectStore {
 		author: '',
 		initialSpeed: 3,
 		tempo: 0,
+		interruptFrequency: 50,
 		defaultPatternLength: DEFAULT_PATTERN_LENGTH
 	});
 	initialized = $state(false);
@@ -87,8 +88,10 @@ class ProjectStore {
 		this.settings = {
 			title: project.name,
 			author: project.author,
-			initialSpeed: firstSong?.initialSpeed ?? 3,
-			tempo: firstSong?.tempo ?? 0,
+			initialSpeed: normalizeInitialSpeed(project.initialSpeed),
+			tempo: normalizeTempo(project.tempo),
+			interruptFrequency:
+				firstSong && firstSong.interruptFrequency > 0 ? firstSong.interruptFrequency : 50,
 			defaultPatternLength: firstSong?.defaultPatternLength ?? DEFAULT_PATTERN_LENGTH
 		};
 		this.patterns = project.songs.map((song) => song.patterns);
@@ -114,7 +117,9 @@ class ProjectStore {
 			this.patternOrder,
 			this.tables,
 			this.patternOrderColors,
-			this.instruments
+			this.instruments,
+			this.getInitialSpeed(),
+			this.getTempo()
 		);
 	}
 
@@ -126,21 +131,13 @@ class ProjectStore {
 	}
 
 	addSong(song: Song): void {
-		const projectInitialSpeed = this.settings.initialSpeed;
-		if (typeof projectInitialSpeed === 'number' && projectInitialSpeed >= 1) {
-			song.initialSpeed = projectInitialSpeed;
+		if (this.songs.length > 0 && this.songs[0].interruptFrequency > 0) {
+			song.interruptFrequency = this.songs[0].interruptFrequency;
 		}
-		const projectTempo = this.settings.tempo;
-		const isFirstSong = this.songs.length === 0;
-		if (isFirstSong) {
-			if (!(song.tempo > 0)) {
-				song.tempo = tempoForInterruptFrequency(song.interruptFrequency);
-			}
-			this.settings.tempo = song.tempo;
-		} else if (typeof projectTempo === 'number' && projectTempo >= 0) {
-			song.tempo = Math.floor(projectTempo);
-		} else {
-			this.settings.tempo = song.tempo;
+		this.settings.interruptFrequency =
+			song.interruptFrequency > 0 ? song.interruptFrequency : 50;
+		if (this.songs.length === 0 && !(this.getTempo() > 0)) {
+			this.settings.tempo = tempoForInterruptFrequency(song.interruptFrequency);
 		}
 		const projectDefaultPatternLength = this.settings.defaultPatternLength;
 		if (
@@ -168,6 +165,22 @@ class ProjectStore {
 			...this.instruments,
 			new InstrumentModel(newId, `Instrument ${newId}`, chipType)
 		];
+	}
+
+	getInitialSpeed(): number {
+		return normalizeInitialSpeed(this.settings.initialSpeed);
+	}
+
+	getTempo(): number {
+		return normalizeTempo(this.settings.tempo);
+	}
+
+	getInterruptFrequency(): number {
+		const value = Number(this.settings.interruptFrequency);
+		if (Number.isFinite(value) && value > 0) return value;
+		const songFrequency = this.songs[0]?.interruptFrequency;
+		if (typeof songFrequency === 'number' && songFrequency > 0) return songFrequency;
+		return 50;
 	}
 
 	getDefaultPatternLength(): number {

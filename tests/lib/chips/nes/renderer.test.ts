@@ -18,7 +18,6 @@ function createNesTestProject(): Project {
 	song.chipType = 'nes';
 	song.tuningTable = NES_DEFAULT_TUNING_TABLE;
 	song.chipFrequency = NES_DEFAULT_TUNING_TABLE[0] ? 1_789_773 : 1_789_773;
-	song.initialSpeed = 6;
 	song.interruptFrequency = 50;
 	song.patterns = [pattern];
 
@@ -26,7 +25,7 @@ function createNesTestProject(): Project {
 		rows: [{ pulseWidth: 2, retrigger: false }]
 	});
 
-	return new Project('NES export test', '', [song], 0, [0], [], {}, [instrument]);
+	return new Project('NES export test', '', [song], 0, [0], [], {}, [instrument], 6);
 }
 
 describe('NESChipRenderer', () => {

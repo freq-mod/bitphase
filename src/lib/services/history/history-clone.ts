@@ -38,7 +38,9 @@ export class HistoryClone {
 			[...project.patternOrder],
 			project.tables.map((table) => this.table(table)),
 			{ ...project.patternOrderColors },
-			project.instruments.map((instrument) => this.instrument(instrument))
+			project.instruments.map((instrument) => this.instrument(instrument)),
+			project.initialSpeed,
+			project.tempo
 		);
 	}
 
@@ -46,13 +48,11 @@ export class HistoryClone {
 		const cloned = new Song(song.getSchema());
 		cloned.patterns = song.patterns.map((pattern) => this.pattern(pattern));
 		cloned.tuningTable = [...song.tuningTable];
-		cloned.initialSpeed = song.initialSpeed;
 		cloned.defaultPatternLength = song.defaultPatternLength;
 		cloned.chipType = song.chipType;
 		cloned.chipVariant = song.chipVariant;
 		cloned.chipFrequency = song.chipFrequency;
 		cloned.interruptFrequency = song.interruptFrequency;
-		cloned.tempo = song.tempo;
 		cloned.tuningTableIndex = song.tuningTableIndex;
 		cloned.a4TuningHz = song.a4TuningHz;
 		cloned.virtualChannelMap = { ...song.virtualChannelMap };

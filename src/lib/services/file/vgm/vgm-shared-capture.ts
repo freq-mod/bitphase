@@ -283,8 +283,8 @@ function createAyCaptureSlot(
 	}
 	if (ownsTimeline) {
 		state.setPatternOrder(patternOrder, project.loopPointId || 0);
-		state.setSpeed(song.initialSpeed || DEFAULT_SPEED);
-		state.setTempo(song.tempo ?? 0);
+		state.setSpeed(project.initialSpeed || DEFAULT_SPEED);
+		state.setTempo(project.tempo ?? 0);
 		timeline.intFrequency = interruptFrequency;
 	}
 
@@ -404,8 +404,8 @@ function createNesCaptureSlot(
 	state.setTables(project.tables);
 	if (ownsTimeline) {
 		state.setPatternOrder(patternOrder, project.loopPointId || 0);
-		state.setSpeed(song.initialSpeed || DEFAULT_SPEED);
-		state.setTempo(song.tempo ?? 0);
+		state.setSpeed(project.initialSpeed || DEFAULT_SPEED);
+		state.setTempo(project.tempo ?? 0);
 		timeline.intFrequency = interruptFrequency;
 	}
 	if (typeof state.resizeChannels === 'function' && totalChannelCount !== NES_HW_CHANNEL_COUNT) {

@@ -3,7 +3,7 @@ import { loadVT2File, loadPT3File } from '../modules/vt-converter';
 import { isTaymBuffer, loadTaymFile } from '../taym/taym-import';
 import { isPsgBuffer, loadPsgFile } from '../ay/psg-import';
 import { isFtmBuffer, loadFtmFile } from '../nes/ftm-import';
-import { Project, Table } from '../../../models/project';
+import { Project, Table, normalizeInitialSpeed, normalizeTempo } from '../../../models/project';
 import {
 	Song,
 	Pattern,
@@ -60,7 +60,8 @@ function reconstructProject(data: any, getChip: (chipType: string) => Chip | nul
 		instruments = [new Instrument('01', 'Instrument 01')];
 	}
 
-	return new Project(
+	const legacySong = data.songs?.[0];
+	const project = new Project(
 		data.name || '',
 		data.author || '',
 		songs,
@@ -68,8 +69,11 @@ function reconstructProject(data: any, getChip: (chipType: string) => Chip | nul
 		data.patternOrder || [0],
 		tables.length > 0 ? tables : [new Table(0, [], 0, 'Table 1')],
 		patternOrderColors,
-		instruments
+		instruments,
+		normalizeInitialSpeed(data.initialSpeed ?? legacySong?.initialSpeed),
+		normalizeTempo(data.tempo ?? legacySong?.tempo)
 	);
+	return project;
 }
 
 function reconstructTable(data: any): Table {
@@ -120,14 +124,6 @@ function reconstructSong(data: any, getChip: (chipType: string) => Chip | null):
 	if (schema?.normalizeSettings) {
 		Object.assign(songRecord, schema.normalizeSettings(songRecord));
 	}
-	const loadedTempo = data.tempo;
-	song.tempo =
-		typeof loadedTempo === 'number' && loadedTempo >= 0 && loadedTempo <= 255
-			? Math.floor(loadedTempo)
-			: 0;
-	const loadedSpeed = data.initialSpeed;
-	song.initialSpeed =
-		typeof loadedSpeed === 'number' && loadedSpeed >= 1 && loadedSpeed <= 255 ? loadedSpeed : 3;
 	const loadedDefaultPatternLength = data.defaultPatternLength;
 	song.defaultPatternLength =
 		typeof loadedDefaultPatternLength === 'number' &&

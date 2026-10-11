@@ -412,7 +412,7 @@
 			row,
 			projectStore.tables
 		);
-		return lastSpeed?.speed ?? projectStore.songs[0]?.initialSpeed ?? 3;
+		return lastSpeed?.speed ?? projectStore.getInitialSpeed();
 	}
 
 	function getSpeedForChip(_chipIndex: number): number | null {

@@ -92,7 +92,7 @@ async function createExportLane(project: Project, pattern: Pattern): Promise<Exp
 	state.setTables(project.tables);
 	state.setIntFrequency(song.interruptFrequency ?? 50, SAMPLE_RATE);
 	state.setPatternOrder(project.patternOrder, project.loopPointId);
-	state.setSpeed(song.initialSpeed ?? 6);
+	state.setSpeed(project.initialSpeed || 6);
 	state.updateSamplesPerTick(SAMPLE_RATE);
 
 	const audioDriver = new NesAudioDriver();
@@ -153,7 +153,6 @@ function createBaseSong(pattern: Pattern): Song {
 	song.chipType = 'nes';
 	song.tuningTable = NES_DEFAULT_TUNING_TABLE;
 	song.chipFrequency = 1_789_773;
-	song.initialSpeed = 6;
 	song.interruptFrequency = 50;
 	song.patterns = [pattern];
 	return song;
@@ -171,9 +170,17 @@ describe('NES WAV export pulse width', () => {
 		const instrument = instrumentFromLegacy('01', 'Pulse', 'nes', {
 			rows: [{ pulseWidth: 0, retrigger: false }]
 		});
-		const project = new Project('E1XY export', '', [createBaseSong(pattern)], 0, [0], [], {}, [
-			instrument
-		]);
+		const project = new Project(
+			'E1XY export',
+			'',
+			[createBaseSong(pattern)],
+			0,
+			[0],
+			[],
+			{},
+			[instrument],
+			6
+		);
 
 		const lane = await createExportLane(project, pattern);
 		try {
@@ -204,7 +211,8 @@ describe('NES WAV export pulse width', () => {
 			[0],
 			[pwmTable],
 			{},
-			[instrument]
+			[instrument],
+			6
 		);
 
 		const lane = await createExportLane(project, pattern);
@@ -236,7 +244,8 @@ describe('NES WAV export pulse width', () => {
 			[0],
 			[pwmTable],
 			{},
-			[instrument]
+			[instrument],
+			6
 		);
 
 		const renderer = new NESChipRenderer(new FileSystemResourceLoader(PUBLIC_DIR));

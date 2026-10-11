@@ -238,6 +238,7 @@ class VT2Converter {
 			module2, patterns2, tuningTable, tuningTableIndex, a4TuningHz,
 			unifiedToVt2, instrumentRemap, tableRemap
 		);
+		song2.interruptFrequency = song1.interruptFrequency;
 
 		return new Project(
 			module1.title,
@@ -247,7 +248,8 @@ class VT2Converter {
 			patternOrder,
 			mergedTables,
 			{},
-			mergedInstruments
+			mergedInstruments,
+			module1.speed >= 1 && module1.speed <= 255 ? Math.floor(module1.speed) : 3
 		);
 	}
 
@@ -392,7 +394,6 @@ class VT2Converter {
 		song.tuningTable = tuningTable;
 		song.tuningTableIndex = tuningTableIndex;
 		song.a4TuningHz = a4TuningHz;
-		song.initialSpeed = module.speed >= 1 && module.speed <= 255 ? module.speed : 3;
 		const chipVariant = this.detectChipType(module);
 		song.chipType = chipVariant === 'AY' || chipVariant === 'YM' ? 'ay' : undefined;
 		song.chipVariant = chipVariant;
@@ -477,7 +478,6 @@ class VT2Converter {
 		song.tuningTable = tuningTable;
 		song.tuningTableIndex = tuningTableIndex;
 		song.a4TuningHz = a4TuningHz;
-		song.initialSpeed = module.speed >= 1 && module.speed <= 255 ? module.speed : 3;
 		const chipVariant = this.detectChipType(module);
 		song.chipType = chipVariant === 'AY' || chipVariant === 'YM' ? 'ay' : undefined;
 		song.chipVariant = chipVariant;
@@ -570,7 +570,6 @@ class VT2Converter {
 		song.tuningTable = tuningTable;
 		song.tuningTableIndex = tuningTableIndex;
 		song.a4TuningHz = a4TuningHz;
-		song.initialSpeed = module.speed >= 1 && module.speed <= 255 ? module.speed : 3;
 
 		song.patterns = patterns.map((vt2Pattern) => {
 			const pattern = new Pattern(vt2Pattern.id, vt2Pattern.rows.length);
@@ -595,7 +594,8 @@ class VT2Converter {
 			module.playOrder,
 			tables,
 			{},
-			instrumentsArray
+			instrumentsArray,
+			module.speed >= 1 && module.speed <= 255 ? Math.floor(module.speed) : 3
 		);
 	}
 

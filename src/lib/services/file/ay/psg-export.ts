@@ -444,8 +444,8 @@ class PsgExportService {
 		state.setTables(project.tables);
 		if (ownsTimeline) {
 			state.setPatternOrder(project.patternOrder || [0]);
-			state.setSpeed(song.initialSpeed || DEFAULT_SPEED);
-			state.setTempo(song.tempo ?? 0);
+			state.setSpeed(project.initialSpeed || DEFAULT_SPEED);
+			state.setTempo(project.tempo ?? 0);
 			if (song.interruptFrequency) {
 				timeline.intFrequency = song.interruptFrequency;
 			}

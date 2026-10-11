@@ -23,7 +23,8 @@ export function assembleAyProject(parts: AyProjectParts): Project {
 		{},
 		parts.instruments.length > 0
 			? parts.instruments
-			: [createPlaceholderInstrument()]
+			: [createPlaceholderInstrument()],
+		1
 	);
 }
 

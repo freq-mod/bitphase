@@ -23,12 +23,11 @@ async function loadModules(): Promise<PsgExportModules> {
 	};
 }
 
-function aySong(pattern: Pattern, initialSpeed: number): Song {
+function aySong(pattern: Pattern): Song {
 	const song = new Song(AY_CHIP_SCHEMA);
 	song.chipType = 'ay';
 	song.chipFrequency = 1_773_400;
 	song.interruptFrequency = 50;
-	song.initialSpeed = initialSpeed;
 	song.patterns = [pattern];
 	song.tuningTable = [...(AY_CHIP_SCHEMA.defaultTuningTable ?? [])];
 	return song;
@@ -45,9 +44,9 @@ function projectWithSpeedOnSong(
 	changed.channels[0]!.rows[row]!.effects = [new Effect(EffectType.Speed, 0, speed)];
 	const songs =
 		songWithSpeed === 0
-			? [aySong(changed, initialSpeed), aySong(quiet, initialSpeed)]
-			: [aySong(quiet, initialSpeed), aySong(changed, initialSpeed)];
-	return new Project('shared speed', '', songs, 0, [0], [], {}, []);
+			? [aySong(changed), aySong(quiet)]
+			: [aySong(quiet), aySong(changed)];
+	return new Project('shared speed', '', songs, 0, [0], [], {}, [], initialSpeed);
 }
 
 describe('shared PSG speed', () => {

@@ -176,13 +176,11 @@ class Pattern {
 class Song {
 	public patterns: Pattern[];
 	public tuningTable: number[];
-	public initialSpeed: number;
 	public defaultPatternLength: number;
 	public chipType?: string;
 	public chipVariant?: string;
 	public chipFrequency?: number;
 	public interruptFrequency: number;
-	public tempo: number;
 	public tuningTableIndex?: number;
 	public a4TuningHz?: number;
 	public virtualChannelMap: Record<number, number> = {};
@@ -190,12 +188,10 @@ class Song {
 
 	constructor(schema?: ChipSchema) {
 		this.#schema = schema;
-		this.initialSpeed = 3;
 		this.defaultPatternLength = DEFAULT_PATTERN_LENGTH;
 		this.patterns = [new Pattern(0, this.defaultPatternLength, schema)];
 		this.tuningTable = [];
 		this.interruptFrequency = 50;
-		this.tempo = 0;
 	}
 
 	setSchema(schema: ChipSchema): void {
