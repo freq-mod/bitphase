@@ -1,6 +1,28 @@
 import { releaseChannelInstrument } from './tracker-instrument-channel.js';
 import { WorkletSlotBase } from './worklet-slot-base.js';
 
+function playbackEffectCommand(command) {
+	const effect = {
+		effect: command.effect,
+		delay: command.delay ?? 0,
+		parameter: command.parameter ?? 0
+	};
+	if (typeof command.tableIndex === 'number' && command.tableIndex >= 0) {
+		effect.tableIndex = command.tableIndex;
+	}
+	return effect;
+}
+
+function silentPatternChannels(channelCount) {
+	const channels = [];
+	for (let ch = 0; ch < channelCount; ch++) {
+		channels.push({
+			rows: [{ note: { name: 0, octave: 0 }, effects: [null] }]
+		});
+	}
+	return channels;
+}
+
 export class TrackerWorkletSlot extends WorkletSlotBase {
 	constructor(port, chipIndex) {
 		super(port, chipIndex);
@@ -57,42 +79,62 @@ export class TrackerWorkletSlot extends WorkletSlotBase {
 		}
 		const channelFields = carry.channelFields;
 		const globalFields = carry.globalFields;
-		const channelDetune = carry.channelDetune;
+		const channelSticky = carry.channelStickyEffects;
+		const globalSticky = carry.globalStickyEffects;
+		const globalCommands = Array.isArray(globalSticky?.commands) ? globalSticky.commands : [];
 		const hasChannelFields = channelFields?.some(
 			(fields) => fields && Object.keys(fields).length > 0
 		);
 		const hasGlobalFields = Boolean(globalFields && Object.keys(globalFields).length > 0);
-		const hasDetune =
-			channelDetune?.some((command) => command) || Boolean(carry.envelopeDetune);
-		if (!hasChannelFields && !hasGlobalFields && !hasDetune) return;
+		const hasChannelSticky = channelSticky?.some((commands) => commands?.length);
+		const hasGlobalSticky = Boolean(globalSticky?.fieldKey) && globalCommands.length > 0;
+		if (!hasChannelFields && !hasGlobalFields && !hasChannelSticky && !hasGlobalSticky) return;
 		if (!this._chipEngineReady()) return;
 
-		const channelCount = Math.max(channelFields?.length ?? 0, channelDetune?.length ?? 0, 1);
+		const channelCount = Math.max(channelFields?.length ?? 0, channelSticky?.length ?? 0, 1);
 		this._resizeForPatternChannels(channelCount);
-		const channels = [];
-		for (let ch = 0; ch < channelCount; ch++) {
-			const detune = channelDetune?.[ch];
-			channels.push({
-				rows: [
-					{
-						note: { name: 0, octave: 0 },
-						effects: detune ? [detune] : [null],
-						...(channelFields?.[ch] ?? {})
-					}
-				]
-			});
+		if (hasChannelFields || hasGlobalFields || hasChannelSticky) {
+			const channels = [];
+			for (let ch = 0; ch < channelCount; ch++) {
+				const effects = (channelSticky?.[ch] ?? [])
+					.filter(Boolean)
+					.map((command) => playbackEffectCommand(command));
+				channels.push({
+					rows: [
+						{
+							note: { name: 0, octave: 0 },
+							effects: effects.length > 0 ? effects : [null],
+							...(channelFields?.[ch] ?? {})
+						}
+					]
+				});
+			}
+			this.patternProcessor.parsePatternRow(
+				{
+					length: 1,
+					channels,
+					patternRows: [{ ...(globalFields ?? {}) }]
+				},
+				0,
+				this.registerState
+			);
 		}
-		const patternRow = { ...(globalFields ?? {}) };
-		if (carry.envelopeDetune) patternRow.envelopeEffect = carry.envelopeDetune;
-		this.patternProcessor.parsePatternRow(
-			{
-				length: 1,
-				channels,
-				patternRows: [patternRow]
-			},
-			0,
-			this.registerState
-		);
+		for (const command of globalCommands) {
+			this.patternProcessor.parsePatternRow(
+				{
+					length: 1,
+					channels: silentPatternChannels(channelCount),
+					patternRows: [
+						{
+							[globalSticky.fieldKey]: playbackEffectCommand(command),
+							...(command.patternRowFields ?? {})
+						}
+					]
+				},
+				0,
+				this.registerState
+			);
+		}
 	}
 
 	_runCatchUpRows(upToRow) {

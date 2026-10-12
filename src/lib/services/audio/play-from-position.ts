@@ -1,22 +1,29 @@
 import type { Pattern } from '../../models/song';
 import type { Table } from '../../models/project';
-import type { ChipSchema, ChipField } from '../../chips/base/schema';
+import type { ChipSchema, ChipField, StickyEffectCommand } from '../../chips/base/schema';
 import { readLastSpeedCommandOnRow, resolveSpeedCommand } from './playback-speed';
 
 const DETUNE_EFFECT_TYPE = 'D'.charCodeAt(0);
+const VOLUME_SLIDE_EFFECT = 8;
 
-export type PlaybackDetuneEffect = {
+export type PlaybackEffectCommand = {
 	effect: number;
 	delay: number;
 	parameter: number;
 	tableIndex?: number;
+	patternRowFields?: Record<string, number>;
 };
+
+export interface GlobalStickyCarry {
+	fieldKey: string;
+	commands: PlaybackEffectCommand[];
+}
 
 export interface PlaybackCarryState {
 	channelFields?: Array<Record<string, unknown>>;
 	globalFields?: Record<string, unknown>;
-	channelDetune?: Array<PlaybackDetuneEffect | null>;
-	envelopeDetune?: PlaybackDetuneEffect;
+	channelStickyEffects?: PlaybackEffectCommand[][];
+	globalStickyEffects?: GlobalStickyCarry;
 	speed?: number;
 	speedTable?: number;
 	speedTablePosition?: number;
@@ -59,15 +66,16 @@ type EffectSlot = {
 	tableIndex?: unknown;
 };
 
-function readDetuneEffect(slot: unknown): PlaybackDetuneEffect | null {
+function readEffectCommand(slot: unknown): PlaybackEffectCommand | null {
 	if (!slot || typeof slot !== 'object') return null;
 	const effect = slot as EffectSlot;
-	if (effect.effect !== DETUNE_EFFECT_TYPE) return null;
+	const effectType = toNum(effect.effect);
+	if (Number.isNaN(effectType) || effectType === 0) return null;
 	const parameter = toNum(effect.parameter);
 	const delay = toNum(effect.delay);
 	const tableIndex = toNum(effect.tableIndex);
-	const command: PlaybackDetuneEffect = {
-		effect: DETUNE_EFFECT_TYPE,
+	const command: PlaybackEffectCommand = {
+		effect: effectType,
 		delay: Number.isNaN(delay) ? 0 : delay,
 		parameter: Number.isNaN(parameter) ? 0 : parameter & 0xff
 	};
@@ -77,12 +85,24 @@ function readDetuneEffect(slot: unknown): PlaybackDetuneEffect | null {
 	return command;
 }
 
-function readLastDetuneOnRow(effects: unknown): PlaybackDetuneEffect | null {
-	if (!Array.isArray(effects)) return null;
-	let found: PlaybackDetuneEffect | null = null;
+function stickyChannelGroup(command: StickyEffectCommand, schema: ChipSchema): string | null {
+	if (command.effect === DETUNE_EFFECT_TYPE) return 'detune';
+	if (command.effect === VOLUME_SLIDE_EFFECT) return 'volume-slide';
+	return schema.stickyChannelEffectGroup?.(command) ?? null;
+}
+
+function readStickyGroupsOnRow(
+	effects: unknown,
+	schema: ChipSchema
+): Map<string, PlaybackEffectCommand> {
+	const found = new Map<string, PlaybackEffectCommand>();
+	if (!Array.isArray(effects)) return found;
 	for (const slot of effects) {
-		const command = readDetuneEffect(slot);
-		if (command) found = command;
+		const command = readEffectCommand(slot);
+		if (!command) continue;
+		const group = stickyChannelGroup(command, schema);
+		if (!group) continue;
+		found.set(group, command);
 	}
 	return found;
 }
@@ -103,8 +123,7 @@ export function collectPlaybackCarry(
 ): PlaybackCarryState | null {
 	if (targetOrderIndex < 0) return null;
 	const targetPatternId = patternOrder[targetOrderIndex];
-	const targetPattern =
-		targetPatternId === undefined ? undefined : getPattern(targetPatternId);
+	const targetPattern = targetPatternId === undefined ? undefined : getPattern(targetPatternId);
 	const channelCount = Math.max(
 		schema.channelLabels?.length ?? 0,
 		targetPattern?.channels?.length ?? 0
@@ -112,9 +131,7 @@ export function collectPlaybackCarry(
 	if (channelCount <= 0) return null;
 
 	const channelFieldEntries = schema.fields
-		? Object.entries(schema.fields).filter(([key, field]) =>
-				isPersistChannelField(key, field)
-			)
+		? Object.entries(schema.fields).filter(([key, field]) => isPersistChannelField(key, field))
 		: [];
 	const globalFieldEntries = schema.globalFields
 		? Object.entries(schema.globalFields).filter(
@@ -127,46 +144,60 @@ export function collectPlaybackCarry(
 		() => ({}) as Record<string, unknown>
 	);
 	const globalFields: Record<string, unknown> = {};
-	const channelDetune: Array<PlaybackDetuneEffect | null> = Array.from(
-		{ length: channelCount },
-		() => null
-	);
-	const trackEnvelopeDetune = Boolean(schema.globalFields?.envelopeEffect);
-	let envelopeDetune: PlaybackDetuneEffect | undefined;
+	const trackGlobalSticky = Boolean(schema.readGlobalStickyRow);
 	let speed: number | undefined;
 	let speedTable: number | undefined;
 	let speedTablePosition: number | undefined;
-	let remaining =
-		channelCount * channelFieldEntries.length +
-		globalFieldEntries.length +
-		channelCount +
-		(trackEnvelopeDetune ? 1 : 0) +
-		1;
-	if (remaining === 0) return null;
+	const channelStickyFound = Array.from({ length: channelCount }, () => new Set<string>());
+	const channelSticky: PlaybackEffectCommand[][] = Array.from({ length: channelCount }, () => []);
+	const globalStickyGroups = new Set<string>();
+	const globalSticky: PlaybackEffectCommand[] = [];
+	let globalStickyFieldKey: string | undefined;
+	let globalStickyClosed = false;
 
-	for (let orderIndex = targetOrderIndex; orderIndex >= 0 && remaining > 0; orderIndex--) {
+	for (let orderIndex = targetOrderIndex; orderIndex >= 0; orderIndex--) {
 		const patternId = patternOrder[orderIndex];
 		const pattern = patternId === undefined ? undefined : getPattern(patternId);
 		if (!pattern?.channels?.length) continue;
-		const rowStart =
-			orderIndex === targetOrderIndex ? targetRow - 1 : pattern.length - 1;
-		for (let rowIndex = rowStart; rowIndex >= 0 && remaining > 0; rowIndex--) {
+		const rowStart = orderIndex === targetOrderIndex ? targetRow - 1 : pattern.length - 1;
+		for (let rowIndex = rowStart; rowIndex >= 0; rowIndex--) {
 			const patternRow = pattern.patternRows?.[rowIndex] as
 				| Record<string, unknown>
 				| undefined;
+			const channelRows: Array<Record<string, unknown> | undefined> = [];
+			for (let ch = 0; ch < pattern.channels.length; ch++) {
+				channelRows.push(
+					pattern.channels[ch]?.rows?.[rowIndex] as Record<string, unknown> | undefined
+				);
+			}
+			const globalStickyRow =
+				trackGlobalSticky && patternRow
+					? schema.readGlobalStickyRow!(patternRow, channelRows)
+					: undefined;
+			if (globalStickyRow?.fieldKey) globalStickyFieldKey = globalStickyRow.fieldKey;
+			if (
+				globalStickyRow?.group &&
+				!globalStickyGroups.has(globalStickyRow.group) &&
+				(!globalStickyClosed || globalStickyRow.survivesClose)
+			) {
+				const command = readEffectCommand(globalStickyRow.effect);
+				if (command) {
+					if (globalStickyRow.commandFields) {
+						command.patternRowFields = globalStickyRow.commandFields;
+					}
+					globalStickyGroups.add(globalStickyRow.group);
+					globalSticky.push(command);
+				}
+			}
+			if (!globalStickyClosed && globalStickyRow?.closesEarlierGroups) {
+				globalStickyClosed = true;
+			}
 			for (const [key, field] of globalFieldEntries) {
 				if (key in globalFields) continue;
+				if (globalStickyRow?.skipFieldKeys?.includes(key)) continue;
 				const value = patternRow?.[key];
 				if (!isGlobalFieldValueSet(key, value, field)) continue;
 				globalFields[key] = value;
-				remaining--;
-			}
-			if (trackEnvelopeDetune && !envelopeDetune) {
-				const command = readDetuneEffect(patternRow?.envelopeEffect);
-				if (command) {
-					envelopeDetune = command;
-					remaining--;
-				}
 			}
 			if (speed === undefined && speedTable === undefined) {
 				const command = readLastSpeedCommandOnRow(pattern.channels, rowIndex);
@@ -176,14 +207,11 @@ export function collectPlaybackCarry(
 						speed = resolved.speed;
 						speedTable = resolved.speedTable;
 						speedTablePosition = resolved.speedTablePosition;
-						remaining--;
 					}
 				}
 			}
 			for (let ch = 0; ch < channelCount && ch < pattern.channels.length; ch++) {
-				const row = pattern.channels[ch].rows?.[rowIndex] as
-					| Record<string, unknown>
-					| undefined;
+				const row = channelRows[ch];
 				if (!row) continue;
 				const carryForChannel = channelFields[ch];
 				for (const [key, field] of channelFieldEntries) {
@@ -191,29 +219,29 @@ export function collectPlaybackCarry(
 					const value = row[key];
 					if (!isChannelFieldValueSet(key, value, field)) continue;
 					carryForChannel[key] = value;
-					remaining--;
 				}
-				if (!channelDetune[ch]) {
-					const command = readLastDetuneOnRow(row.effects);
-					if (command) {
-						channelDetune[ch] = command;
-						remaining--;
-					}
+				const foundGroups = channelStickyFound[ch];
+				if (!foundGroups) continue;
+				const stickyOnRow = readStickyGroupsOnRow(row.effects, schema);
+				for (const [group, command] of stickyOnRow) {
+					if (foundGroups.has(group)) continue;
+					foundGroups.add(group);
+					channelSticky[ch]?.push(command);
 				}
 			}
 		}
 	}
+	globalSticky.reverse();
 
-	const hasChannelFields = channelFields.some(
-		(fields) => Object.keys(fields).length > 0
-	);
+	const hasChannelFields = channelFields.some((fields) => Object.keys(fields).length > 0);
 	const hasGlobalFields = Object.keys(globalFields).length > 0;
-	const hasChannelDetune = channelDetune.some((command) => command !== null);
+	const hasChannelSticky = channelSticky.some((commands) => commands.length > 0);
+	const hasGlobalSticky = globalSticky.length > 0 && globalStickyFieldKey !== undefined;
 	if (
 		!hasChannelFields &&
 		!hasGlobalFields &&
-		!hasChannelDetune &&
-		!envelopeDetune &&
+		!hasChannelSticky &&
+		!hasGlobalSticky &&
 		speed === undefined &&
 		speedTable === undefined
 	) {
@@ -223,8 +251,10 @@ export function collectPlaybackCarry(
 	const carry: PlaybackCarryState = {};
 	if (hasChannelFields) carry.channelFields = channelFields;
 	if (hasGlobalFields) carry.globalFields = globalFields;
-	if (hasChannelDetune) carry.channelDetune = channelDetune;
-	if (envelopeDetune) carry.envelopeDetune = envelopeDetune;
+	if (hasChannelSticky) carry.channelStickyEffects = channelSticky;
+	if (hasGlobalSticky && globalStickyFieldKey) {
+		carry.globalStickyEffects = { fieldKey: globalStickyFieldKey, commands: globalSticky };
+	}
 	if (speed !== undefined) carry.speed = speed;
 	if (speedTable !== undefined) {
 		carry.speedTable = speedTable;

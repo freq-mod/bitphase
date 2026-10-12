@@ -115,9 +115,7 @@ describe('collectPlaybackCarry', () => {
 			]
 		]);
 
-		expect(
-			collectPlaybackCarry([0, 1], (id) => patterns.get(id), 1, 0, schema)
-		).toEqual({
+		expect(collectPlaybackCarry([0, 1], (id) => patterns.get(id), 1, 0, schema)).toEqual({
 			channelFields: [{ instrument: 1, duty: 2 }]
 		});
 	});
@@ -187,8 +185,7 @@ describe('collectPlaybackCarry', () => {
 		const second = makePattern(1, [2]);
 
 		expect(
-			collectPlaybackCarry([0, 1], (id) => (id === 0 ? first : second), 1, 0, schema)
-				?.speed
+			collectPlaybackCarry([0, 1], (id) => (id === 0 ? first : second), 1, 0, schema)?.speed
 		).toBe(8);
 	});
 
@@ -205,7 +202,7 @@ describe('collectPlaybackCarry', () => {
 
 		expect(
 			collectPlaybackCarry([0, 1], (id) => (id === 0 ? first : second), 1, 0, schema)
-				?.channelDetune
+				?.channelStickyEffects?.[0]
 		).toEqual([{ effect: 'D'.charCodeAt(0), delay: 0, parameter: 0x85 }]);
 	});
 
@@ -221,7 +218,7 @@ describe('collectPlaybackCarry', () => {
 
 		expect(
 			collectPlaybackCarry([0, 1], (id) => (id === 0 ? first : later), 1, 0, schema)
-				?.channelDetune?.[0]
+				?.channelStickyEffects?.[0]?.[0]
 		).toEqual({
 			effect: 'D'.charCodeAt(0),
 			delay: 2,
@@ -230,7 +227,7 @@ describe('collectPlaybackCarry', () => {
 		});
 		expect(
 			collectPlaybackCarry([0, 1], (id) => (id === 0 ? first : later), 1, 1, schema)
-				?.channelDetune?.[0]
+				?.channelStickyEffects?.[0]?.[0]
 		).toEqual({ effect: 'D'.charCodeAt(0), delay: 0, parameter: 0x80 });
 	});
 
@@ -255,10 +252,9 @@ describe('collectPlaybackCarry', () => {
 			0,
 			AY_CHIP_SCHEMA
 		);
-		expect(carry?.envelopeDetune).toEqual({
-			effect: 'D'.charCodeAt(0),
-			delay: 0,
-			parameter: 0x90
+		expect(carry?.globalStickyEffects).toEqual({
+			fieldKey: 'envelopeEffect',
+			commands: [{ effect: 'D'.charCodeAt(0), delay: 0, parameter: 0x90 }]
 		});
 	});
 
@@ -272,18 +268,133 @@ describe('collectPlaybackCarry', () => {
 		const tables = [{ id: 4, rows: [0, 7, 2], loop: 0, name: 'T', additive: false }];
 
 		expect(
-			collectPlaybackCarry(
-				[0, 1],
-				(id) => (id === 0 ? first : second),
-				1,
-				0,
-				schema,
-				tables
-			)
+			collectPlaybackCarry([0, 1], (id) => (id === 0 ? first : second), 1, 0, schema, tables)
 		).toMatchObject({
 			speed: 7,
 			speedTable: 4,
 			speedTablePosition: 1
+		});
+	});
+
+	it('carries volume slide across later notes', () => {
+		const pattern = makePattern(0, [2, 2, 2]);
+		pattern.channels[0]!.rows[0]!.effects = [{ effect: 8, delay: 1, parameter: 0x13 }];
+		pattern.channels[0]!.rows[1]!.effects = [
+			{ effect: 'A'.charCodeAt(0), delay: 0, parameter: 0x37 }
+		];
+
+		expect(
+			collectPlaybackCarry([0], (id) => (id === 0 ? pattern : undefined), 0, 2, schema)
+				?.channelStickyEffects?.[0]
+		).toEqual([{ effect: 8, delay: 1, parameter: 0x13 }]);
+	});
+
+	it('keeps the newest volume slide', () => {
+		const pattern = makePattern(0, [2, 2]);
+		pattern.channels[0]!.rows[0]!.effects = [{ effect: 8, delay: 0, parameter: 0x01 }];
+		pattern.channels[0]!.rows[1]!.effects = [{ effect: 8, delay: 2, parameter: 0x20 }];
+
+		expect(
+			collectPlaybackCarry([0], (id) => pattern, 0, 2, schema)?.channelStickyEffects?.[0]
+		).toEqual([{ effect: 8, delay: 2, parameter: 0x20 }]);
+	});
+
+	it('carries NES effects that stay active after a new note', () => {
+		const pattern = makePattern(0, [2, 2, 0]);
+		pattern.channels[0]!.rows[0]!.effects = [
+			{ effect: 'E'.charCodeAt(0), delay: 1, parameter: 2 },
+			{ effect: 'E'.charCodeAt(0), delay: 2, parameter: 0x11 },
+			{ effect: 'E'.charCodeAt(0), delay: 4, parameter: 0x20 },
+			{ effect: 'E'.charCodeAt(0), delay: 5, parameter: 0x0a },
+			{ effect: 'E'.charCodeAt(0), delay: 6, parameter: 1 },
+			{ effect: 'E'.charCodeAt(0), delay: 7, parameter: 0x04 },
+			{ effect: 'E'.charCodeAt(0), delay: 8, parameter: 0x7f }
+		];
+
+		expect(
+			collectPlaybackCarry([0], (id) => pattern, 0, 2, NES_CHIP_SCHEMA)
+				?.channelStickyEffects?.[0]
+		).toEqual([
+			{ effect: 'E'.charCodeAt(0), delay: 1, parameter: 2 },
+			{ effect: 'E'.charCodeAt(0), delay: 4, parameter: 0x20 },
+			{ effect: 'E'.charCodeAt(0), delay: 5, parameter: 0x0a },
+			{ effect: 'E'.charCodeAt(0), delay: 6, parameter: 1 },
+			{ effect: 'E'.charCodeAt(0), delay: 8, parameter: 0x7f }
+		]);
+	});
+
+	it('keeps an AY auto-envelope across later notes', () => {
+		const pattern = makePattern(0, [2, 2, 0]);
+		(pattern.patternRows[0] as Record<string, unknown>).envelopeEffect = {
+			effect: 'E'.charCodeAt(0),
+			delay: 0x0a,
+			parameter: 0x23
+		};
+		(pattern.patternRows[1] as Record<string, unknown>).envelopeEffect = {
+			effect: 'E'.charCodeAt(0),
+			delay: 0x0a,
+			parameter: 0x01
+		};
+
+		expect(
+			collectPlaybackCarry([0], (id) => pattern, 0, 2, AY_CHIP_SCHEMA)?.globalStickyEffects
+		).toEqual({
+			fieldKey: 'envelopeEffect',
+			commands: [{ effect: 'E'.charCodeAt(0), delay: 0x0a, parameter: 0x23 }]
+		});
+	});
+
+	it('drops AY envelope effects cleared by a later envelope period', () => {
+		const pattern = makePattern(0, [2, 2, 2, 0]);
+		(pattern.patternRows[0] as Record<string, unknown>).envelopeEffect = {
+			effect: 'D'.charCodeAt(0),
+			delay: 0,
+			parameter: 0x90
+		};
+		(pattern.patternRows[1] as Record<string, unknown>).envelopeEffect = {
+			effect: 'V'.charCodeAt(0),
+			delay: 0,
+			parameter: 0x34
+		};
+		(pattern.patternRows[1] as Record<string, unknown>).envelopeValue = 80;
+		(pattern.patternRows[2] as Record<string, unknown>).envelopeValue = 100;
+
+		const carry = collectPlaybackCarry([0], (id) => pattern, 0, 3, AY_CHIP_SCHEMA);
+		expect(carry?.globalStickyEffects).toEqual({
+			fieldKey: 'envelopeEffect',
+			commands: [{ effect: 'D'.charCodeAt(0), delay: 0, parameter: 0x90 }]
+		});
+		expect(carry?.globalFields).toEqual({ envelopeValue: 100 });
+	});
+
+	it('carries AY envelope commands that survive notes, and keeps a portamento target off the period', () => {
+		const pattern = makePattern(0, [2, 2, 0]);
+		(pattern.patternRows[0] as Record<string, unknown>).envelopeValue = 100;
+		(pattern.patternRows[0] as Record<string, unknown>).envelopeEffect = {
+			effect: 'V'.charCodeAt(0),
+			delay: 1,
+			parameter: 0x34
+		};
+		(pattern.patternRows[1] as Record<string, unknown>).envelopeValue = 200;
+		(pattern.patternRows[1] as Record<string, unknown>).envelopeEffect = {
+			effect: 'P'.charCodeAt(0),
+			delay: 0,
+			parameter: 4
+		};
+
+		const carry = collectPlaybackCarry([0], (id) => pattern, 0, 2, AY_CHIP_SCHEMA);
+		expect(carry?.globalFields).toEqual({ envelopeValue: 100 });
+		expect(carry?.globalStickyEffects).toEqual({
+			fieldKey: 'envelopeEffect',
+			commands: [
+				{ effect: 'V'.charCodeAt(0), delay: 1, parameter: 0x34 },
+				{
+					effect: 'P'.charCodeAt(0),
+					delay: 0,
+					parameter: 4,
+					patternRowFields: { envelopeValue: 200 }
+				}
+			]
 		});
 	});
 });

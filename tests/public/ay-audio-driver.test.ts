@@ -25,9 +25,7 @@ describe('AYAudioDriver', () => {
 		});
 
 		it('returns 0 when channelMuted is true', () => {
-			expect(
-				driver.calculateVolume(15, 15, 0, false, false, true, false)
-			).toBe(0);
+			expect(driver.calculateVolume(15, 15, 0, false, false, true, false)).toBe(0);
 		});
 
 		it('clamps instrumentVolume + amplitudeSliding to 0-15', () => {
@@ -516,7 +514,11 @@ describe('AYAudioDriver', () => {
 			driver._processNote(
 				state,
 				0,
-				{ note: { name: 1, octave: 0 }, instrument: 0, effects: [{ effect: 0, delay: 0, parameter: 0 }] },
+				{
+					note: { name: 1, octave: 0 },
+					instrument: 0,
+					effects: [{ effect: 0, delay: 0, parameter: 0 }]
+				},
 				registerState
 			);
 			expect(state.channelTimerPwmSweep[0]).toBe(30);
@@ -524,7 +526,11 @@ describe('AYAudioDriver', () => {
 			driver._processNote(
 				state,
 				0,
-				{ note: { name: 5, octave: 2 }, instrument: 0, effects: [{ effect: 0, delay: 0, parameter: 0 }] },
+				{
+					note: { name: 5, octave: 2 },
+					instrument: 0,
+					effects: [{ effect: 0, delay: 0, parameter: 0 }]
+				},
 				registerState
 			);
 			expect(state.channelTimerPwmSweep[0]).toBe(30);
@@ -681,7 +687,9 @@ describe('AYAudioDriver', () => {
 				channelVibratoSliding: [0]
 			};
 			const registerState = {
-				channels: [{ tone: 0, volume: 0, mixer: { tone: false, noise: false, envelope: false } }]
+				channels: [
+					{ tone: 0, volume: 0, mixer: { tone: false, noise: false, envelope: false } }
+				]
 			};
 			const pattern = {
 				channels: [{ rows: [{ note: { name: 0, octave: 0 }, effects: [null] }] }]
@@ -702,9 +710,15 @@ describe('AYAudioDriver', () => {
 			state.channelOnOffCounter = [0, 0, 0];
 			state.channelMuted = [false, false, false];
 			state.channelSoundEnabled = [true, true, true];
-			state.setInstruments(legacyInstruments([
-				{ id: '01', rows: [{ tone: true, volume: 15, noise: false, envelope: false }], loop: 0 }
-			]));
+			state.setInstruments(
+				legacyInstruments([
+					{
+						id: '01',
+						rows: [{ tone: true, volume: 15, noise: false, envelope: false }],
+						loop: 0
+					}
+				])
+			);
 			state.setTuningTable([1000, 900]);
 			state.channelCurrentNotes = [0, 1, 0];
 			state.instrumentPositions = [0, 0, 0];
@@ -732,13 +746,15 @@ describe('AYAudioDriver', () => {
 			const driver = new AYAudioDriver();
 			const state = new AyumiState();
 			state.setTuningTable([600]);
-			state.setInstruments(legacyInstruments([
-				{
-					id: '01',
-					rows: [{ tone: true, volume: 15, noise: false, envelope: true }],
-					loop: 0
-				}
-			]));
+			state.setInstruments(
+				legacyInstruments([
+					{
+						id: '01',
+						rows: [{ tone: true, volume: 15, noise: false, envelope: true }],
+						loop: 0
+					}
+				])
+			);
 			state.channelInstruments = [0, -1, -1];
 			state.channelOnOffCounter = [0, 0, 0];
 			state.channelMuted = [true, false, false];
@@ -788,13 +804,15 @@ describe('AYAudioDriver', () => {
 			state.channelOnOffCounter = [0, 0, 0];
 			state.channelMuted = [false, true, false];
 			state.channelSoundEnabled = [true, true, true];
-			state.setInstruments(legacyInstruments([
-				{
-					id: '01',
-					rows: [{ tone: true, volume: 15, noise: false, envelope: false }],
-					loop: 0
-				}
-			]));
+			state.setInstruments(
+				legacyInstruments([
+					{
+						id: '01',
+						rows: [{ tone: true, volume: 15, noise: false, envelope: false }],
+						loop: 0
+					}
+				])
+			);
 			state.setTuningTable([1000, 900]);
 			state.channelCurrentNotes = [0, 0, 0];
 			state.instrumentPositions = [0, 0, 0];
@@ -818,13 +836,15 @@ describe('AYAudioDriver', () => {
 			const driver = new AYAudioDriver();
 			const state = new AyumiState();
 			state.setTuningTable([600, 700, 800]);
-			state.setInstruments(legacyInstruments([
-				{
-					id: '01',
-					rows: [{ tone: true, volume: 12, noise: false, envelope: false }],
-					loop: 0
-				}
-			]));
+			state.setInstruments(
+				legacyInstruments([
+					{
+						id: '01',
+						rows: [{ tone: true, volume: 12, noise: false, envelope: false }],
+						loop: 0
+					}
+				])
+			);
 			state.channelInstruments[0] = 0;
 			state.channelInstruments[1] = -1;
 			state.channelInstruments[2] = -1;
@@ -885,24 +905,50 @@ describe('AYAudioDriver', () => {
 			const driver = new AYAudioDriver();
 			const state = new AyumiState();
 			state.setTuningTable([600]);
-			state.setInstruments(legacyInstruments([
-				{
-					id: '01',
-					rows: [
-						{ tone: true, volume: 15, noise: false, envelope: false, amplitudeSliding: false },
-						{ tone: true, volume: 10, noise: false, envelope: false, amplitudeSliding: false },
-						{ tone: true, volume: 5, noise: false, envelope: false, amplitudeSliding: false },
-						{ tone: true, volume: 0, noise: false, envelope: false, amplitudeSliding: false }
-					],
-					loop: 3,
-					sampleData: [0, 64, 128, 192],
-					sampleRate: 44100,
-					sampleStart: 0,
-					sampleEnd: 3,
-					sampleLoopStart: 0,
-					sampleLoopEnabled: true
-				}
-			]));
+			state.setInstruments(
+				legacyInstruments([
+					{
+						id: '01',
+						rows: [
+							{
+								tone: true,
+								volume: 15,
+								noise: false,
+								envelope: false,
+								amplitudeSliding: false
+							},
+							{
+								tone: true,
+								volume: 10,
+								noise: false,
+								envelope: false,
+								amplitudeSliding: false
+							},
+							{
+								tone: true,
+								volume: 5,
+								noise: false,
+								envelope: false,
+								amplitudeSliding: false
+							},
+							{
+								tone: true,
+								volume: 0,
+								noise: false,
+								envelope: false,
+								amplitudeSliding: false
+							}
+						],
+						loop: 3,
+						sampleData: [0, 64, 128, 192],
+						sampleRate: 44100,
+						sampleStart: 0,
+						sampleEnd: 3,
+						sampleLoopStart: 0,
+						sampleLoopEnabled: true
+					}
+				])
+			);
 			state.channelInstruments = [0, -1, -1];
 			state.channelOnOffCounter = [0, 0, 0];
 			state.channelMuted = [false, false, false];
@@ -940,28 +986,30 @@ describe('AYAudioDriver', () => {
 			const driver = new AYAudioDriver();
 			const state = new AyumiState();
 			state.setTuningTable([600]);
-			state.setInstruments(legacyInstruments([
-				{
-					id: '01',
-					rows: [
-						{
-							tone: true,
-							volume: 15,
-							noise: false,
-							envelope: false,
-							amplitudeSliding: true,
-							amplitudeSlideUp: false
-						}
-					],
-					loop: 0,
-					sampleData: [255],
-					sampleRate: 44100,
-					sampleStart: 0,
-					sampleEnd: 0,
-					sampleLoopStart: 0,
-					sampleLoopEnabled: true
-				}
-			]));
+			state.setInstruments(
+				legacyInstruments([
+					{
+						id: '01',
+						rows: [
+							{
+								tone: true,
+								volume: 15,
+								noise: false,
+								envelope: false,
+								amplitudeSliding: true,
+								amplitudeSlideUp: false
+							}
+						],
+						loop: 0,
+						sampleData: [255],
+						sampleRate: 44100,
+						sampleStart: 0,
+						sampleEnd: 0,
+						sampleLoopStart: 0,
+						sampleLoopEnabled: true
+					}
+				])
+			);
 			state.channelInstruments = [0, -1, -1];
 			state.channelOnOffCounter = [0, 0, 0];
 			state.channelMuted = [false, false, false];
@@ -997,13 +1045,15 @@ describe('AYAudioDriver', () => {
 	describe('pattern envelope shape', () => {
 		function createEnvelopeState() {
 			const state = new AyumiState();
-			state.setInstruments(legacyInstruments([
-				{
-					id: '01',
-					rows: [{ tone: true, volume: 15, noise: false, envelope: true }],
-					loop: 0
-				}
-			]));
+			state.setInstruments(
+				legacyInstruments([
+					{
+						id: '01',
+						rows: [{ tone: true, volume: 15, noise: false, envelope: true }],
+						loop: 0
+					}
+				])
+			);
 			state.channelInstruments = [0, -1, -1];
 			state.channelMuted = [false, false, false];
 			state.channelSoundEnabled = [true, false, false];
@@ -1229,20 +1279,24 @@ describe('AYAudioDriver', () => {
 			driver.processInstruments(state, registerState);
 
 			expect(registerState.forceEnvelopeShapeWrite).toBe(false);
-			expect(registerState.channels[0].timerEffects.syncbuzzer.waveform).toEqual([12, 8, 12, 8]);
+			expect(registerState.channels[0].timerEffects.syncbuzzer.waveform).toEqual([
+				12, 8, 12, 8
+			]);
 		});
 
 		it('still writes pattern envelope shape when syncbuzzer is not active', () => {
 			const driver = new AYAudioDriver();
 			const state = new AyumiState();
-			state.setInstruments(legacyInstruments([
-				{
-					id: '01',
-					rows: [{ tone: true, volume: 15, noise: false, envelope: true }],
-					loop: 0,
-					timerRows: [{ syncbuzzer: false }]
-				}
-			]));
+			state.setInstruments(
+				legacyInstruments([
+					{
+						id: '01',
+						rows: [{ tone: true, volume: 15, noise: false, envelope: true }],
+						loop: 0,
+						timerRows: [{ syncbuzzer: false }]
+					}
+				])
+			);
 			state.channelInstruments = [0, -1, -1];
 			state.channelMuted = [false, false, false];
 			state.envelopeOnOffCounter = 0;
@@ -1275,14 +1329,16 @@ describe('AYAudioDriver', () => {
 			const driver = new AYAudioDriver();
 			const state = new AyumiState();
 			state.setTuningTable([600, 700, 800]);
-			state.setInstruments(legacyInstruments([
-				{
-					id: '01',
-					rows: [{ tone: true, volume: 15, noise: false, envelope: true }],
-					loop: 0,
-					timerRows: [{ syncbuzzer: true, timerWaveform: [9, 13] }]
-				}
-			]));
+			state.setInstruments(
+				legacyInstruments([
+					{
+						id: '01',
+						rows: [{ tone: true, volume: 15, noise: false, envelope: true }],
+						loop: 0,
+						timerRows: [{ syncbuzzer: true, timerWaveform: [9, 13] }]
+					}
+				])
+			);
 			state.channelInstruments = [0, -1, -1];
 			state.channelMuted = [false, false, false];
 			state.channelSoundEnabled = [true, false, false];
@@ -1315,17 +1371,19 @@ describe('AYAudioDriver', () => {
 	describe('timer PWM E1/E2/E3 overrides', () => {
 		function createSidPwmState() {
 			const state = new AyumiState();
-			state.setInstruments(legacyInstruments([
-				{
-					id: '01',
-					rows: [{ tone: true, volume: 15, noise: false, envelope: false }],
-					loop: 0,
-					timerRows: [{ sid: true, timerWaveform: [15, 0] }],
-					timerPwmDuty: 50,
-					timerPwmSweepMin: 0,
-					timerPwmSweep: 0
-				}
-			]));
+			state.setInstruments(
+				legacyInstruments([
+					{
+						id: '01',
+						rows: [{ tone: true, volume: 15, noise: false, envelope: false }],
+						loop: 0,
+						timerRows: [{ sid: true, timerWaveform: [15, 0] }],
+						timerPwmDuty: 50,
+						timerPwmSweepMin: 0,
+						timerPwmSweep: 0
+					}
+				])
+			);
 			state.setTuningTable([100]);
 			state.channelInstruments = [0, -1, -1];
 			state.channelMuted = [false, false, false];
@@ -1411,7 +1469,9 @@ describe('AYAudioDriver', () => {
 							rows: [
 								{
 									note: { name: 0, octave: 0 },
-									effects: [{ effect: 'E'.charCodeAt(0), delay: 2, parameter: 0xff }]
+									effects: [
+										{ effect: 'E'.charCodeAt(0), delay: 2, parameter: 0xff }
+									]
 								}
 							]
 						},
@@ -1464,7 +1524,9 @@ describe('AYAudioDriver', () => {
 							rows: [
 								{
 									note: { name: 2, octave: 1 },
-									effects: [{ effect: 'E'.charCodeAt(0), delay: 2, parameter: 0xff }]
+									effects: [
+										{ effect: 'E'.charCodeAt(0), delay: 2, parameter: 0xff }
+									]
 								}
 							]
 						},
@@ -1493,7 +1555,9 @@ describe('AYAudioDriver', () => {
 							rows: [
 								{
 									note: { name: 0, octave: 0 },
-									effects: [{ effect: 'E'.charCodeAt(0), delay: 2, parameter: 0xff }]
+									effects: [
+										{ effect: 'E'.charCodeAt(0), delay: 2, parameter: 0xff }
+									]
 								}
 							]
 						},
@@ -1528,6 +1592,41 @@ describe('AYAudioDriver', () => {
 				registerState
 			);
 			expect(state.channelTimerPwmDutyOverride[0]).toBe(-1);
+		});
+	});
+
+	describe('envelope on/off with one nibble', () => {
+		it('6.60 holds the envelope off after the on ticks', () => {
+			const driver = new AYAudioDriver();
+			const state = new AyumiState();
+			driver._initEnvelopeOnOff(state, { parameter: 0x60 }, false);
+			expect(driver.envelopeOffPhase(state)).toBe(false);
+			for (let tick = 0; tick < 6; tick++) driver.processEnvelopeOnOff(state);
+			expect(state.envelopeOnOffCounter).toBe(0);
+			expect(driver.envelopeOffPhase(state)).toBe(true);
+			driver.processEnvelopeOnOff(state);
+			expect(driver.envelopeOffPhase(state)).toBe(true);
+		});
+
+		it('6.06 holds the envelope off, then leaves it on', () => {
+			const driver = new AYAudioDriver();
+			const state = new AyumiState();
+			driver._initEnvelopeOnOff(state, { parameter: 0x06 }, false);
+			expect(driver.envelopeOffPhase(state)).toBe(true);
+			for (let tick = 0; tick < 5; tick++) driver.processEnvelopeOnOff(state);
+			expect(driver.envelopeOffPhase(state)).toBe(true);
+			driver.processEnvelopeOnOff(state);
+			expect(state.envelopeOnOffEnabled).toBe(true);
+			expect(driver.envelopeOffPhase(state)).toBe(false);
+		});
+
+		it('a new envelope period clears a held off phase', () => {
+			const driver = new AYAudioDriver();
+			const state = new AyumiState();
+			driver._initEnvelopeOnOff(state, { parameter: 0x60 }, false);
+			for (let tick = 0; tick < 6; tick++) driver.processEnvelopeOnOff(state);
+			driver._resetAllEnvelopeEffects(state);
+			expect(driver.envelopeOffPhase(state)).toBe(false);
 		});
 	});
 });

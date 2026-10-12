@@ -1,5 +1,6 @@
 import type { ChipSchema } from '../base/schema';
 import { generate12TETTuningTable } from '../../models/pt3/tuning-tables';
+import { nesStickyChannelEffectGroup } from './playback-carry';
 
 export const NES_NTSC_CPU_FREQUENCY = 1_789_773;
 export const NES_PAL_CPU_FREQUENCY = 1_662_607;
@@ -41,6 +42,7 @@ export const NES_CHIP_SCHEMA: ChipSchema = {
 	chipType: 'nes',
 	defaultTuningTable: NES_DEFAULT_TUNING_TABLE,
 	defaultChipVariant: 'NTSC',
+	stickyChannelEffectGroup: nesStickyChannelEffectGroup,
 	channelLabels: ['Pulse 1', 'Pulse 2', 'Triangle', 'Noise', 'DPCM'],
 	template: '{note} {instrument}{table}{volume} {effect}',
 	fields: {

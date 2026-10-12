@@ -404,6 +404,41 @@ class AYAudioDriver {
 		return this.instrumentPreserveTimerPwmSweepOnNewNote(state, instrumentIndex);
 	}
 
+	readPatternRowDelay(patternRow) {
+		const effect = patternRow?.envelopeEffect;
+		if (!effect || effect.effect !== EffectAlgorithms.NOTE_DELAY) return null;
+		const ticks = effect.parameter ?? 0;
+		if (!(ticks > 0)) return null;
+		return {
+			ticks: ticks & 0xff,
+			payload: patternRow.envelopeValue,
+			patternRow: {
+				...patternRow,
+				envelopeValue: undefined,
+				envelopeEffect: null
+			}
+		};
+	}
+
+	applyPatternRowDelay(state, registerState, envelopeValue) {
+		const patternRow = { envelopeValue, envelopeEffect: null };
+		const channelCount = state.channelInstruments?.length ?? 0;
+		for (let channelIndex = 0; channelIndex < channelCount; channelIndex++) {
+			this._processEnvelope(
+				state,
+				channelIndex,
+				{ envelopeShape: 0 },
+				patternRow,
+				registerState
+			);
+		}
+	}
+
+	patternRowMarksSongEnd(patternRow) {
+		const effect = patternRow?.envelopeEffect;
+		return !!(effect && effect.effect === EffectAlgorithms.SONG_END);
+	}
+
 	_processEnvelope(state, channelIndex, row, patternRow, registerState) {
 		if (!state.channelEnvelopeEnabled) return;
 		if (state.channelMuted[channelIndex]) return;
@@ -457,8 +492,7 @@ class AYAudioDriver {
 				}
 				state.channelEnvelopeEnabled[channelIndex] = true;
 
-				const envelopeOnOffActive = state.envelopeOnOffCounter > 0;
-				const envelopeDisabledByOnOff = envelopeOnOffActive && !state.envelopeOnOffEnabled;
+				const envelopeDisabledByOnOff = this.envelopeOffPhase(state);
 
 				if (!envelopeDisabledByOnOff) {
 					this.channelMixerState[channelIndex].envelope = true;
@@ -487,6 +521,7 @@ class AYAudioDriver {
 		state.envelopeVibratoSliding = 0;
 		state.envelopeArpeggioCounter = 0;
 		state.envelopeOnOffCounter = 0;
+		state.envelopeOnOffActive = false;
 		state.envelopeEffectTable = -1;
 		state.autoEnvelopeActive = false;
 	}
@@ -620,6 +655,7 @@ class AYAudioDriver {
 		state.envelopeOnDuration = onOffState.onDuration;
 		state.envelopeOnOffCounter = onOffState.counter;
 		state.envelopeOnOffEnabled = onOffState.enabled;
+		state.envelopeOnOffActive = true;
 	}
 
 	_initEnvelopeDetune(state, effect, hasTableIndex) {
@@ -719,8 +755,7 @@ class AYAudioDriver {
 		state.channelAmplitudeSliding[channelIndex] = 0;
 
 		const patternVolume = state.channelPatternVolumes[channelIndex];
-		const envelopeOnOffActive = state.envelopeOnOffCounter > 0;
-		const envelopeDisabledByOnOff = envelopeOnOffActive && !state.envelopeOnOffEnabled;
+		const envelopeDisabledByOnOff = this.envelopeOffPhase(state);
 		const finalVolume = this.calculateVolume(
 			patternVolume,
 			15,
@@ -975,8 +1010,7 @@ class AYAudioDriver {
 			const instrumentVolume = state.channelInstrumentVolumes[channelIndex];
 			const amplitudeSliding = state.channelAmplitudeSliding[channelIndex];
 
-			const envelopeOnOffActive = state.envelopeOnOffCounter > 0;
-			const envelopeDisabledByOnOff = envelopeOnOffActive && !state.envelopeOnOffEnabled;
+			const envelopeDisabledByOnOff = this.envelopeOffPhase(state);
 
 			let finalVolume = this.calculateVolume(
 				patternVolume,
@@ -1326,6 +1360,10 @@ class AYAudioDriver {
 			state.envelopeBaseValue = result.baseValue;
 			state.envelopePortamentoActive = result.active;
 		}
+	}
+
+	envelopeOffPhase(state) {
+		return !!state.envelopeOnOffActive && !state.envelopeOnOffEnabled;
 	}
 
 	processEnvelopeOnOff(state) {

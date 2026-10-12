@@ -21,6 +21,9 @@ class TrackerPatternProcessor {
 		this._noteDelayPending = [];
 		this._delayHoldsNote = [];
 		this._registerState = null;
+		this._patternRowDelayArmed = false;
+		this._patternRowDelayCounter = 0;
+		this._patternRowDelayPayload = undefined;
 	}
 
 	_applyPlaybackSpeed(speed) {
@@ -36,6 +39,9 @@ class TrackerPatternProcessor {
 
 		this._noteSongEnd(pattern, rowIndex);
 		this._registerState = registerState;
+		if (this._patternRowDelayArmed && this._patternRowDelayCounter === 0) {
+			this._flushPatternRowDelay();
+		}
 
 		for (let channelIndex = 0; channelIndex < pattern.channels.length; channelIndex++) {
 			const channel = pattern.channels[channelIndex];
@@ -63,7 +69,13 @@ class TrackerPatternProcessor {
 			this._processSpeedOnly(channelIndex, row);
 		}
 
-		this._dispatchPatternRow(pattern, rowIndex, patternRow, registerState);
+		const patternRowDelay = this.chipAudioDriver.readPatternRowDelay?.(patternRow) ?? null;
+		let patternRowForDispatch = patternRow;
+		if (patternRowDelay && patternRowDelay.ticks > 0) {
+			this._armPatternRowDelay(patternRowDelay.ticks, patternRowDelay.payload);
+			patternRowForDispatch = patternRowDelay.patternRow ?? patternRow;
+		}
+		this._dispatchPatternRow(pattern, rowIndex, patternRowForDispatch, registerState);
 	}
 
 	_dispatchPatternRow(pattern, rowIndex, patternRow, registerState) {
@@ -147,15 +159,45 @@ class TrackerPatternProcessor {
 		}
 	}
 
+	_effectDelayTicks(effect) {
+		if (!effect || effect.effect !== EffectAlgorithms.NOTE_DELAY) return 0;
+		const ticks = effect.parameter ?? 0;
+		return ticks > 0 ? ticks & 0xff : 0;
+	}
+
 	_noteDelayParameter(row) {
 		const effects = row?.effects;
-		if (!effects) return 0;
+		if (!Array.isArray(effects)) return 0;
 		for (const effect of effects) {
-			if (!effect || effect.effect !== EffectAlgorithms.NOTE_DELAY) continue;
-			const ticks = effect.parameter ?? 0;
-			if (ticks > 0) return ticks & 0xff;
+			const ticks = this._effectDelayTicks(effect);
+			if (ticks > 0) return ticks;
 		}
 		return 0;
+	}
+
+	_armPatternRowDelay(ticks, payload) {
+		this._patternRowDelayArmed = true;
+		this._patternRowDelayCounter = ticks;
+		this._patternRowDelayPayload = payload;
+	}
+
+	_tickPatternRowDelay() {
+		if (!this._patternRowDelayArmed) return;
+		if (this._patternRowDelayCounter === 0) {
+			this._flushPatternRowDelay();
+			return;
+		}
+		this._patternRowDelayCounter--;
+	}
+
+	_flushPatternRowDelay() {
+		if (!this._patternRowDelayArmed) return;
+		const payload = this._patternRowDelayPayload;
+		this._patternRowDelayArmed = false;
+		this._patternRowDelayCounter = 0;
+		this._patternRowDelayPayload = undefined;
+		if (!this._registerState) return;
+		this.chipAudioDriver.applyPatternRowDelay?.(this.state, this._registerState, payload);
 	}
 
 	_armNoteDelay(channelIndex, ticks, pattern, rowIndex, patternRow) {
@@ -192,15 +234,17 @@ class TrackerPatternProcessor {
 
 	tickNoteDelays() {
 		const armed = this.state.channelNoteDelayArmed;
-		if (!armed) return;
-		for (let channelIndex = 0; channelIndex < armed.length; channelIndex++) {
-			if (!armed[channelIndex]) continue;
-			if (this.state.channelNoteDelayCounter[channelIndex] === 0) {
-				this._flushNoteDelay(channelIndex);
-			} else {
-				this.state.channelNoteDelayCounter[channelIndex]--;
+		if (armed) {
+			for (let channelIndex = 0; channelIndex < armed.length; channelIndex++) {
+				if (!armed[channelIndex]) continue;
+				if (this.state.channelNoteDelayCounter[channelIndex] === 0) {
+					this._flushNoteDelay(channelIndex);
+				} else {
+					this.state.channelNoteDelayCounter[channelIndex]--;
+				}
 			}
 		}
+		this._tickPatternRowDelay();
 	}
 
 	_processNote(channelIndex, row) {
@@ -377,10 +421,9 @@ class TrackerPatternProcessor {
 			}
 		}
 		if (!hasEnd) {
-			const envelopeEffect = pattern.patternRows?.[rowIndex]?.envelopeEffect;
-			if (envelopeEffect && envelopeEffect.effect === EffectAlgorithms.SONG_END) {
-				hasEnd = true;
-			}
+			hasEnd =
+				this.chipAudioDriver.patternRowMarksSongEnd?.(pattern.patternRows?.[rowIndex]) ===
+				true;
 		}
 		this.state.timeline.noteSongEnd(rowIndex, hasEnd);
 	}
@@ -475,7 +518,8 @@ class TrackerPatternProcessor {
 			this.state.channelArpeggioSemitone1[channelIndex] = 0;
 			this.state.channelArpeggioSemitone2[channelIndex] = 0;
 			this.state.channelArpeggioPosition[channelIndex] = 0;
-			this.state.channelCurrentNotes[channelIndex] = this.state.channelBaseNotes[channelIndex];
+			this.state.channelCurrentNotes[channelIndex] =
+				this.state.channelBaseNotes[channelIndex];
 			return;
 		}
 

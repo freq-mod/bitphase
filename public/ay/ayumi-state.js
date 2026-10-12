@@ -71,6 +71,7 @@ class AyumiState extends TrackerState {
 		this.envelopeOffDuration = 0;
 		this.envelopeOnOffCounter = 0;
 		this.envelopeOnOffEnabled = false;
+		this.envelopeOnOffActive = false;
 		this.envelopeArpeggioSemitone1 = 0;
 		this.envelopeArpeggioSemitone2 = 0;
 		this.envelopeArpeggioDelay = 0;
@@ -153,6 +154,7 @@ class AyumiState extends TrackerState {
 		this.envelopeOffDuration = 0;
 		this.envelopeOnOffCounter = 0;
 		this.envelopeOnOffEnabled = false;
+		this.envelopeOnOffActive = false;
 		this.envelopeArpeggioSemitone1 = 0;
 		this.envelopeArpeggioSemitone2 = 0;
 		this.envelopeArpeggioDelay = 0;

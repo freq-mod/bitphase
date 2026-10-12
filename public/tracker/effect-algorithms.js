@@ -139,11 +139,12 @@ class EffectAlgorithms {
 
 	static initOnOff(parameter) {
 		const { offDuration, onDuration } = EffectAlgorithms.parseOnOffParameter(parameter);
+		const startsOff = onDuration === 0 && offDuration > 0;
 		return {
 			onDuration,
 			offDuration,
-			counter: onDuration,
-			enabled: true
+			counter: startsOff ? offDuration : onDuration,
+			enabled: !startsOff
 		};
 	}
 

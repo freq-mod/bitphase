@@ -1,5 +1,6 @@
 import type { ChipSchema } from '../base/schema';
 import { PT3TuneTables, generate12TETTuningTable } from '../../models/pt3/tuning-tables';
+import { readAyEnvelopeSticky } from './playback-carry';
 
 export const ATARI_ST_CHIP_FREQUENCY = 2_000_000;
 export const SUNSOFT_5B_CHIP_FREQUENCY = 894_886;
@@ -8,6 +9,7 @@ export const AY_CHIP_SCHEMA: ChipSchema = {
 	chipType: 'ay',
 	defaultTuningTable: PT3TuneTables[2],
 	defaultChipVariant: 'AY',
+	readGlobalStickyRow: readAyEnvelopeSticky,
 	globalTemplate: '{envelopeValue} {envelopeEffect} {noiseValue}',
 	globalFields: {
 		envelopeValue: {
@@ -106,8 +108,7 @@ export const AY_CHIP_SCHEMA: ChipSchema = {
 			group: 'chip',
 			notifyAudioService: true,
 			disabledWhen: { key: 'stMixing', value: true },
-			resolveDisplayValue: (value, context) =>
-				context.stMixing === true ? 'YM' : value
+			resolveDisplayValue: (value, context) => (context.stMixing === true ? 'YM' : value)
 		},
 		{
 			key: 'chipFrequency',
@@ -158,8 +159,7 @@ export const AY_CHIP_SCHEMA: ChipSchema = {
 			group: 'chip',
 			notifyAudioService: true,
 			disabledWhen: { key: 'stMixing', value: true },
-			resolveDisplayValue: (value, context) =>
-				context.stMixing === true ? 'mono' : value
+			resolveDisplayValue: (value, context) => (context.stMixing === true ? 'mono' : value)
 		},
 		{
 			key: 'tuningTableIndex',

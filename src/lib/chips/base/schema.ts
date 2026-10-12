@@ -48,6 +48,23 @@ export interface ChipSetting {
 	startNewRow?: boolean;
 }
 
+export interface StickyEffectCommand {
+	effect: number;
+	delay: number;
+	parameter?: number;
+	tableIndex?: number;
+}
+
+export interface GlobalStickyRowRead {
+	group: string | null;
+	closesEarlierGroups: boolean;
+	survivesClose?: boolean;
+	skipFieldKeys?: string[];
+	commandFields?: Record<string, number>;
+	effect?: unknown;
+	fieldKey?: string;
+}
+
 export interface ChipSchema {
 	chipType: string;
 	template: string;
@@ -67,6 +84,11 @@ export interface ChipSchema {
 		context: Record<string, unknown>
 	) => ChipSettingSideEffect[];
 	normalizeSettings?: (record: Record<string, unknown>) => Record<string, unknown>;
+	stickyChannelEffectGroup?: (effect: StickyEffectCommand) => string | null;
+	readGlobalStickyRow?: (
+		patternRow: Record<string, unknown>,
+		channelRows: Array<Record<string, unknown> | undefined>
+	) => GlobalStickyRowRead;
 }
 
 export function applySchemaDefaults<T extends object>(target: T, schema: ChipSchema): void {
