@@ -780,7 +780,8 @@
 				pattern: originalPattern,
 				bounds,
 				converter,
-				selectedChannels
+				selectedChannels,
+				schema
 			});
 
 			recordBulkPatternEdit(originalPattern, updatedPattern);

@@ -1,3 +1,10 @@
+export interface ScriptEffect {
+	effect: number;
+	delay: number;
+	parameter: number;
+	tableIndex?: number;
+}
+
 export interface ScriptRowData {
 	rowIndex: number;
 	channelIndex: number;
@@ -5,24 +12,27 @@ export interface ScriptRowData {
 	volume: number;
 	instrument: number;
 	table: number;
-	envelopeShape: number;
-	envelopeValue: number;
-	envelopeEffect: {
-		effect: number;
-		delay: number;
-		parameter: number;
-		tableIndex?: number;
-	} | null;
-	effect: {
-		effect: number;
-		delay: number;
-		parameter: number;
-		tableIndex?: number;
-	} | null;
+	effect: ScriptEffect | null;
+	effects: (ScriptEffect | null)[];
+	[field: string]: unknown;
+}
+
+export interface ScriptGlobalRow {
+	rowIndex: number;
+	[field: string]: unknown;
+}
+
+export interface ScriptChipInfo {
+	type: string;
+	channels: string[];
+	volumeMax: number;
+	fields: string[];
+	globals: string[];
 }
 
 export interface ScriptContext {
 	rows: ScriptRowData[];
+	globals: ScriptGlobalRow[];
 	selection: {
 		minRow: number;
 		maxRow: number;
@@ -31,10 +41,12 @@ export interface ScriptContext {
 	};
 	patternLength: number;
 	channelCount: number;
+	chip: ScriptChipInfo;
 }
 
 export interface ScriptResult {
 	rows: ScriptRowData[];
+	globals: ScriptGlobalRow[];
 }
 
 export type UserScriptFunction = (context: ScriptContext) => ScriptResult;

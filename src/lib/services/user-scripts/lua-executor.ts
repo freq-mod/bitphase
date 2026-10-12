@@ -1,5 +1,6 @@
 import { LuaFactory } from 'wasmoon';
-import type { ScriptContext, ScriptResult, ScriptRowData } from './types';
+import { normalizeScriptGlobals, normalizeScriptRow } from './script-model';
+import type { ScriptContext, ScriptResult } from './types';
 
 let luaFactory: LuaFactory | null = null;
 
@@ -17,49 +18,23 @@ export class LuaExecutor {
 
 		try {
 			lua.global.set('rows', context.rows);
+			lua.global.set('globals', context.globals);
 			lua.global.set('selection', context.selection);
 			lua.global.set('patternLength', context.patternLength);
 			lua.global.set('channelCount', context.channelCount);
+			lua.global.set('chip', context.chip);
 
 			await lua.doString(code);
 
-			const resultRows = lua.global.get('rows') as ScriptRowData[];
+			const resultRows = lua.global.get('rows');
+			const resultGlobals = lua.global.get('globals');
+			const rows = Array.isArray(resultRows)
+				? resultRows.map((row) => normalizeScriptRow(row))
+				: [];
 
-			return { rows: this.normalizeRows(resultRows) };
+			return { rows, globals: normalizeScriptGlobals(resultGlobals) };
 		} finally {
 			lua.global.close();
 		}
-	}
-
-	private static normalizeRows(rows: any[]): ScriptRowData[] {
-		//ay for now
-		return rows.map((row) => ({
-			rowIndex: row.rowIndex ?? 0,
-			channelIndex: row.channelIndex ?? 0,
-			note: row.note ?? '---',
-			volume: row.volume ?? 0,
-			instrument: row.instrument ?? 0,
-			table: row.table_ ?? row.table ?? 0,
-			envelopeShape: row.envelopeShape ?? 0,
-			envelopeValue: row.envelopeValue ?? 0,
-			envelopeEffect:
-				row.envelopeEffect && typeof row.envelopeEffect === 'object'
-					? {
-							effect: row.envelopeEffect.effect ?? 0,
-							delay: row.envelopeEffect.delay ?? 0,
-							parameter: row.envelopeEffect.parameter ?? 0,
-							tableIndex: row.envelopeEffect.tableIndex
-						}
-					: null,
-			effect:
-				row.effect && typeof row.effect === 'object'
-					? {
-							effect: row.effect.effect ?? 0,
-							delay: row.effect.delay ?? 0,
-							parameter: row.effect.parameter ?? 0,
-							tableIndex: row.effect.tableIndex
-						}
-					: null
-		}));
 	}
 }

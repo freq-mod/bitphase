@@ -2,15 +2,24 @@
 	import Button from '../Button/Button.svelte';
 	import { ModalPanel } from '../ModalPanel';
 	import { AlertBanner } from '../AlertBanner';
+	import type { ChipSchema } from '../../chips/base/schema';
 	import type { UserScript } from '../../services/user-scripts/types';
 	import { userScriptsStore } from '../../stores/user-scripts.svelte';
 	import ScriptEditorModal from './ScriptEditorModal.svelte';
 	import { open } from '../../services/modal/modal-service';
 
-	let { resolve, dismiss, hasSelection = false } = $props<{
+	let {
+		resolve,
+		dismiss,
+		hasSelection = false,
+		schema,
+		channelLabels
+	} = $props<{
 		resolve?: (script?: UserScript) => void;
 		dismiss?: () => void;
 		hasSelection?: boolean;
+		schema?: ChipSchema;
+		channelLabels?: string[];
 	}>();
 
 	let selectedScript = $state<UserScript | null>(null);
@@ -51,7 +60,7 @@
 	}
 
 	async function handleNewScript() {
-		const result = await open(ScriptEditorModal, { isNew: true });
+		const result = await open(ScriptEditorModal, { isNew: true, schema, channelLabels });
 		if (result) {
 			userScriptsStore.add(result);
 			selectedScript = result;
@@ -60,7 +69,12 @@
 
 	async function handleEditScript() {
 		if (!selectedScript || userScriptsStore.isBuiltIn(selectedScript.id)) return;
-		const result = await open(ScriptEditorModal, { script: selectedScript, isNew: false });
+		const result = await open(ScriptEditorModal, {
+			script: selectedScript,
+			isNew: false,
+			schema,
+			channelLabels
+		});
 		if (result) {
 			userScriptsStore.update(result);
 			selectedScript = result;
@@ -102,7 +116,9 @@
 		input.click();
 	}
 
-	const isBuiltIn = $derived(selectedScript ? userScriptsStore.isBuiltIn(selectedScript.id) : false);
+	const isBuiltIn = $derived(
+		selectedScript ? userScriptsStore.isBuiltIn(selectedScript.id) : false
+	);
 </script>
 
 <ModalPanel title="Apply Script" width="w-[450px]" bodyClass="min-h-0 flex-1 overflow-y-auto">
@@ -133,20 +149,24 @@
 
 			<div
 				class="h-48 overflow-y-auto rounded border border-[var(--color-app-border)] bg-[var(--color-app-surface-secondary)]">
-				{#each filteredScripts as script}
+				{#each filteredScripts as script (script.id)}
 					<button
 						class="w-full cursor-pointer border-b border-[var(--color-app-border)] px-3 py-2 text-left transition-colors last:border-b-0 {selectedScript?.id ===
 						script.id
-							? 'bg-[var(--color-app-surface-active)] border-l-2 border-l-[var(--color-app-primary)]'
-							: 'hover:bg-[var(--color-app-surface)] border-l-2 border-l-transparent'}"
+							? 'border-l-2 border-l-[var(--color-app-primary)] bg-[var(--color-app-surface-active)]'
+							: 'border-l-2 border-l-transparent hover:bg-[var(--color-app-surface)]'}"
 						onclick={() => selectScript(script)}
 						ondblclick={() => handleDoubleClick(script)}>
 						<div class="flex items-center gap-2">
-							<span class="text-xs font-medium {selectedScript?.id === script.id ? 'text-[var(--color-app-primary)]' : 'text-[var(--color-app-text-primary)]'}">
+							<span
+								class="text-xs font-medium {selectedScript?.id === script.id
+									? 'text-[var(--color-app-primary)]'
+									: 'text-[var(--color-app-text-primary)]'}">
 								{script.name}
 							</span>
 							{#if userScriptsStore.isBuiltIn(script.id)}
-								<span class="rounded bg-[var(--color-app-surface)] px-1 py-0.5 text-[10px] text-[var(--color-app-text-tertiary)]">
+								<span
+									class="rounded bg-[var(--color-app-surface)] px-1 py-0.5 text-[10px] text-[var(--color-app-text-tertiary)]">
 									built-in
 								</span>
 							{/if}
@@ -157,7 +177,9 @@
 					</button>
 				{:else}
 					<div class="flex h-full items-center justify-center">
-						<p class="text-xs text-[var(--color-app-text-tertiary)]">No scripts found</p>
+						<p class="text-xs text-[var(--color-app-text-tertiary)]">
+							No scripts found
+						</p>
 					</div>
 				{/each}
 			</div>
@@ -172,7 +194,11 @@
 						title={isBuiltIn ? 'Cannot edit built-in scripts' : 'Edit script'}>
 						Edit
 					</Button>
-					<Button variant="ghost" size="sm" onclick={handleExportScript} title="Export script">
+					<Button
+						variant="ghost"
+						size="sm"
+						onclick={handleExportScript}
+						title="Export script">
 						Export
 					</Button>
 					<Button

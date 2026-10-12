@@ -5,7 +5,7 @@ export const defaultUserScripts: UserScript[] = [
 		id: 'fade-in',
 		name: 'Fade In',
 		description:
-			'Gradually increases volume from empty to max (15), writing only when the level changes',
+			'Gradually increases volume from empty to the chip maximum, writing only when the level changes',
 		code: `local minRow = selection.minRow
 local maxRow = selection.maxRow
 local totalRows = maxRow - minRow + 1
@@ -17,7 +17,7 @@ for i, row in ipairs(rows) do
     if totalRows > 1 then
         progress = relativeRow / (totalRows - 1)
     end
-    local volume = math.floor(progress * 15 + 0.5)
+    local volume = math.floor(progress * chip.volumeMax + 0.5)
     local channel = row.channelIndex
     if lastVolume[channel] ~= volume then
         row.volume = volume
@@ -31,7 +31,7 @@ end`
 		id: 'fade-out',
 		name: 'Fade Out',
 		description:
-			'Gradually decreases volume from max (15) to empty, writing only when the level changes',
+			'Gradually decreases volume from the chip maximum to empty, writing only when the level changes',
 		code: `local minRow = selection.minRow
 local maxRow = selection.maxRow
 local totalRows = maxRow - minRow + 1
@@ -43,13 +43,13 @@ for i, row in ipairs(rows) do
     if totalRows > 1 then
         progress = relativeRow / (totalRows - 1)
     end
-    local volume = math.floor((1 - progress) * 15 + 0.5)
+    local volume = math.floor((1 - progress) * chip.volumeMax + 0.5)
     local channel = row.channelIndex
     if lastVolume[channel] ~= volume then
         row.volume = volume
         lastVolume[channel] = volume
     else
-		row.volume = 0
+        row.volume = 0
     end
 end`
 	}

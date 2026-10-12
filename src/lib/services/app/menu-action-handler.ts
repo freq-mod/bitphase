@@ -263,7 +263,12 @@ export function createMenuActionHandler(ctx: MenuActionContext) {
 
 			if (data.action === ACTION_APPLY_SCRIPT) {
 				const hasSelection = patternEditor?.hasSelection?.() ?? false;
-				const result = await ctx.open(UserScriptsModal, { hasSelection });
+				const song = ctx.getCurrentProject().songs[ctx.getActiveSongIndex()];
+				const result = await ctx.open(UserScriptsModal, {
+					hasSelection,
+					schema: song?.getSchema(),
+					channelLabels: song?.getEffectiveChannelLabels()
+				});
 				if (result && patternEditor?.applyScript) {
 					patternEditor.applyScript(result);
 				}
