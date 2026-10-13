@@ -230,7 +230,7 @@ export class UserScriptsService {
 					continue;
 				}
 				if (!(key in rowData)) continue;
-				genericRow[key] = coerceFieldValue(rowData[key], field, key);
+				genericRow[key] = this.toGenericField(rowData[key], field, key);
 			}
 
 			const originalRow = original?.rows.find(
@@ -274,12 +274,22 @@ export class UserScriptsService {
 			for (const [key, field] of Object.entries(globalFields)) {
 				const value = this.resolveGlobalField(key, rowIndex, result, original);
 				if (value === undefined) continue;
-				const coerced = coerceFieldValue(value, field, key);
-				patternRow[key] = isEffectFieldKey(key)
-					? effectToGenericValue(genericValueToEffect(coerced))
-					: coerced;
+				patternRow[key] = this.toGenericField(value, field, key);
 			}
 		}
+	}
+
+	private static toGenericField(
+		value: unknown,
+		field: ChipSchema['fields'][string],
+		key: string
+	): string | number | Record<string, unknown> | null {
+		if (isEffectFieldKey(key)) {
+			return effectToGenericValue(genericValueToEffect(value));
+		}
+		const coerced = coerceFieldValue(value, field, key);
+		if (typeof coerced === 'string' || typeof coerced === 'number') return coerced;
+		return null;
 	}
 
 	private static resolveGlobalField(
