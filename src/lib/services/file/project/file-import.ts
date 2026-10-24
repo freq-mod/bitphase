@@ -22,7 +22,12 @@ import { normalizeSamplePlaybackBounds } from '../../../chips/ay/sample-region';
 import { normalizeNesInstrumentRow } from '../../../chips/nes/instrument';
 import { copyNesDpcmFields, normalizeDpcmSamples } from '../../../chips/nes/dpcm';
 import type { ChipSchema } from '../../../chips/base/schema';
-import { computeEffectiveChannelLabels } from '../../../models/virtual-channels';
+import {
+	computeEffectiveChannelLabels,
+	normalizeVirtualChannelMap,
+	selectChannelsWithinVirtualLimit,
+	storedVirtualChannelTotal
+} from '../../../models/virtual-channels';
 import {
 	padEffectsArray,
 	resolveChannelEffectColumnCount,
@@ -91,15 +96,32 @@ function reconstructSong(data: any, getChip: (chipType: string) => Chip | null):
 	const schema = chip?.schema;
 	const song = new Song(schema);
 
-	const virtualChannelMap: Record<number, number> = data.virtualChannelMap ?? {};
+	const rawVirtualChannelMap: Record<number, number> = data.virtualChannelMap ?? {};
+	const hwLabels = schema?.channelLabels ?? ['A', 'B', 'C'];
+	const virtualChannelMap = normalizeVirtualChannelMap(rawVirtualChannelMap, hwLabels.length);
 	song.virtualChannelMap = virtualChannelMap;
 
-	const hwLabels = schema?.channelLabels ?? ['A', 'B', 'C'];
 	const effectiveLabels = computeEffectiveChannelLabels(hwLabels, virtualChannelMap);
+	const storedChannelCount = storedVirtualChannelTotal(hwLabels.length, rawVirtualChannelMap);
 
-	song.patterns = data.patterns?.map((patternData: any) =>
-		reconstructPattern(patternData, schema, effectiveLabels)
-	) || [new Pattern(0, DEFAULT_PATTERN_LENGTH, schema)];
+	song.patterns = data.patterns?.map((patternData: any) => {
+		const pattern = reconstructPattern(patternData, schema, effectiveLabels);
+		if (
+			patternData.channels &&
+			pattern.channels.length === storedChannelCount &&
+			storedChannelCount > effectiveLabels.length
+		) {
+			pattern.channels = selectChannelsWithinVirtualLimit(
+				pattern.channels,
+				hwLabels.length,
+				rawVirtualChannelMap
+			);
+			for (let index = 0; index < pattern.channels.length; index++) {
+				pattern.channels[index].label = effectiveLabels[index] ?? pattern.channels[index].label;
+			}
+		}
+		return pattern;
+	}) || [new Pattern(0, DEFAULT_PATTERN_LENGTH, schema)];
 	syncSharedEffectColumnLayout(song.patterns);
 	song.tuningTable = data.tuningTable || song.tuningTable;
 	song.chipType = data.chipType;

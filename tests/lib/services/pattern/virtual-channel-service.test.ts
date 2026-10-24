@@ -70,6 +70,17 @@ describe('VirtualChannelService', () => {
 			]);
 		});
 
+		it('should refuse a fourth virtual channel on the same hardware channel', () => {
+			const song = createSong({ 1: 3 });
+			song.patterns = [new Pattern(0, 64, AY_CHIP_SCHEMA, ['A', 'B1', 'B2', 'B3', 'C'])];
+
+			const result = VirtualChannelService.addVirtualChannel(song, 1, song.patterns);
+
+			expect(result).toBeNull();
+			expect(song.virtualChannelMap).toEqual({ 1: 3 });
+			expect(song.patterns[0].channels).toHaveLength(5);
+		});
+
 		it('should update all patterns', () => {
 			const song = createSong();
 			song.patterns.push(new Pattern(1, 32, AY_CHIP_SCHEMA));

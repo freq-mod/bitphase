@@ -1,17 +1,23 @@
 import { Pattern, Channel, Row, type Song } from '../../models/song';
 import type { ChipSchema } from '../../chips/base/schema';
-import { computeEffectiveChannelLabels, formatVirtualChannelLabel } from '../../models/virtual-channels';
+import {
+	clampVirtualChannelCount,
+	computeEffectiveChannelLabels,
+	formatVirtualChannelLabel,
+	MAX_VIRTUAL_CHANNELS_PER_HARDWARE_CHANNEL
+} from '../../models/virtual-channels';
 
 export class VirtualChannelService {
 	static addVirtualChannel(
 		song: Song,
 		hwChannelIndex: number,
 		patterns: Pattern[]
-	): { updatedMap: Record<number, number>; updatedPatterns: Pattern[] } {
+	): { updatedMap: Record<number, number>; updatedPatterns: Pattern[] } | null {
 		const schema = song.getSchema();
 		const hwLabels = schema?.channelLabels ?? ['A', 'B', 'C'];
 		const currentMap = { ...song.virtualChannelMap };
-		const currentCount = currentMap[hwChannelIndex] ?? 1;
+		const currentCount = clampVirtualChannelCount(currentMap[hwChannelIndex]);
+		if (currentCount >= MAX_VIRTUAL_CHANNELS_PER_HARDWARE_CHANNEL) return null;
 		currentMap[hwChannelIndex] = currentCount + 1;
 
 		const insertIndex = this.getGroupEndIndex(hwChannelIndex, song.virtualChannelMap) + 1;
@@ -47,7 +53,7 @@ export class VirtualChannelService {
 		const schema = song.getSchema();
 		const hwLabels = schema?.channelLabels ?? ['A', 'B', 'C'];
 		const currentMap = { ...song.virtualChannelMap };
-		const currentCount = currentMap[hwChannelIndex] ?? 1;
+		const currentCount = clampVirtualChannelCount(currentMap[hwChannelIndex]);
 
 		if (currentCount <= 1) return null;
 
@@ -126,7 +132,7 @@ export class VirtualChannelService {
 	): number {
 		let offset = 0;
 		for (let i = 0; i < hwChannelIndex; i++) {
-			offset += virtualChannelMap[i] ?? 1;
+			offset += clampVirtualChannelCount(virtualChannelMap[i]);
 		}
 		return offset;
 	}
@@ -136,6 +142,6 @@ export class VirtualChannelService {
 		virtualChannelMap: Record<number, number>
 	): number {
 		return this.getGroupStartIndex(hwChannelIndex, virtualChannelMap)
-			+ (virtualChannelMap[hwChannelIndex] ?? 1) - 1;
+			+ clampVirtualChannelCount(virtualChannelMap[hwChannelIndex]) - 1;
 	}
 }

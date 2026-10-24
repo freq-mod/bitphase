@@ -3,7 +3,7 @@ import { FileImportService } from '@/lib/services/file/project/file-import';
 import { FileExportService } from '@/lib/services/file/project/file-export';
 import { normalizeAyInstrumentFields, sampleTimerRowFromInstrument } from '@/lib/chips/ay/instrument';
 import { decodeTimerWaveform } from '@/lib/chips/ay/ay-timer-macros';
-import { Instrument } from '@/lib/models/song';
+import { Instrument, NoteName } from '@/lib/models/song';
 
 describe('FileImportService', () => {
 	it('reads tempo and initial speed from the project', async () => {
@@ -41,6 +41,47 @@ describe('FileImportService', () => {
 
 		expect(project.initialSpeed).toBe(7);
 		expect(project.tempo).toBe(140);
+	});
+
+	it('caps each hardware channel at 3 virtual channels when loading', async () => {
+		const channel = (label: string, noteName?: number) => ({
+			label,
+			rows: noteName === undefined ? [] : [{ note: { name: noteName, octave: 4 } }]
+		});
+		const json = JSON.stringify({
+			name: 'split',
+			songs: [
+				{
+					virtualChannelMap: { 0: 5 },
+					patterns: [
+						{
+							id: 0,
+							length: 1,
+							channels: [
+								channel('A1', NoteName.C),
+								channel('A2'),
+								channel('A3'),
+								channel('A4', NoteName.E),
+								channel('A5'),
+								channel('B', NoteName.D),
+								channel('C')
+							]
+						}
+					]
+				}
+			],
+			patternOrder: [0],
+			tables: [],
+			instruments: []
+		});
+
+		const project = await FileImportService.reconstructFromJsonAsync(json);
+		const pattern = project.songs[0].patterns[0];
+
+		expect(project.songs[0].virtualChannelMap).toEqual({ 0: 3 });
+		expect(pattern.channels.map((item) => item.label)).toEqual(['A1', 'A2', 'A3', 'B', 'C']);
+		expect(pattern.channels[0].rows[0].note.name).toBe(NoteName.C);
+		expect(pattern.channels[3].rows[0].note.name).toBe(NoteName.D);
 	});
 
 	it('preserves projects with zero songs', async () => {

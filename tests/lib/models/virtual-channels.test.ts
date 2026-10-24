@@ -1,11 +1,15 @@
 import { describe, it, expect } from 'vitest';
 import {
+	clampVirtualChannelCount,
 	computeEffectiveChannelLabels,
 	getHardwareChannelIndex,
 	getVirtualChannelGroups,
 	getVirtualIndicesForHardwareChannel,
 	getTotalVirtualChannelCount,
-	hasVirtualChannels
+	hasVirtualChannels,
+	MAX_VIRTUAL_CHANNELS_PER_HARDWARE_CHANNEL,
+	normalizeVirtualChannelMap,
+	selectChannelsWithinVirtualLimit
 } from '../../../src/lib/models/virtual-channels';
 
 const HW_LABELS = ['A', 'B', 'C'];
@@ -30,6 +34,12 @@ describe('computeEffectiveChannelLabels', () => {
 	it('should treat count of 1 as no virtual channels', () => {
 		expect(computeEffectiveChannelLabels(HW_LABELS, { 0: 1, 1: 1, 2: 1 })).toEqual([
 			'A', 'B', 'C'
+		]);
+	});
+
+	it('should cap a hardware channel at 3 virtual channels', () => {
+		expect(computeEffectiveChannelLabels(HW_LABELS, { 1: 9 })).toEqual([
+			'A', 'B1', 'B2', 'B3', 'C'
 		]);
 	});
 });
@@ -109,7 +119,36 @@ describe('getTotalVirtualChannelCount', () => {
 	});
 
 	it('should treat missing entries as 1', () => {
-		expect(getTotalVirtualChannelCount(3, { 1: 4 })).toBe(6);
+		expect(getTotalVirtualChannelCount(3, { 1: 2 })).toBe(4);
+	});
+
+	it('should cap each hardware channel at the virtual channel limit', () => {
+		expect(getTotalVirtualChannelCount(3, { 1: 9 })).toBe(5);
+	});
+});
+
+describe('virtual channel limit', () => {
+	it('clamps counts into the range 1..3', () => {
+		expect(MAX_VIRTUAL_CHANNELS_PER_HARDWARE_CHANNEL).toBe(3);
+		expect(clampVirtualChannelCount(undefined)).toBe(1);
+		expect(clampVirtualChannelCount(0)).toBe(1);
+		expect(clampVirtualChannelCount(2.9)).toBe(2);
+		expect(clampVirtualChannelCount(3)).toBe(3);
+		expect(clampVirtualChannelCount(4)).toBe(3);
+	});
+
+	it('drops unsplit channels and caps the stored map', () => {
+		expect(normalizeVirtualChannelMap({ 0: 5, 1: 1, 2: 2 }, 3)).toEqual({ 0: 3, 2: 2 });
+	});
+
+	it('keeps the first 3 virtual channels in a group and the other hardware channels', () => {
+		expect(
+			selectChannelsWithinVirtualLimit(
+				['A1', 'A2', 'A3', 'A4', 'A5', 'B', 'C1', 'C2', 'C3', 'C4'],
+				3,
+				{ 0: 5, 2: 4 }
+			)
+		).toEqual(['A1', 'A2', 'A3', 'B', 'C1', 'C2', 'C3']);
 	});
 });
 

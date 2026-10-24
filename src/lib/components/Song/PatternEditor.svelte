@@ -108,7 +108,9 @@
 		getVirtualChannelGroups,
 		getHardwareChannelIndex,
 		computeEffectiveChannelLabels,
-		getTotalVirtualChannelCount
+		getTotalVirtualChannelCount,
+		clampVirtualChannelCount,
+		MAX_VIRTUAL_CHANNELS_PER_HARDWARE_CHANNEL
 	} from '../../models/virtual-channels';
 	import { VirtualChannelService } from '../../services/pattern/virtual-channel-service';
 	import { midiService } from '../../services/midi/midi-service';
@@ -2399,9 +2401,8 @@
 
 		if (data.action === 'add_virtual_channel') {
 			if (isPlaying || !supportsVirtualChannels()) return;
-			applyVirtualChannelChange(
-				VirtualChannelService.addVirtualChannel(song, hwIndex, patterns)
-			);
+			const result = VirtualChannelService.addVirtualChannel(song, hwIndex, patterns);
+			if (result) applyVirtualChannelChange(result);
 		} else if (data.action === 'remove_virtual_channel') {
 			if (isPlaying || !supportsVirtualChannels()) return;
 			const result = VirtualChannelService.removeVirtualChannel(
@@ -2430,7 +2431,7 @@
 		const song = projectStore.songs[songIndex];
 		const hwLabels = schema.channelLabels ?? ['A', 'B', 'C'];
 		const hwIndex = channelContextMenuHwIndex;
-		const currentCount = song?.virtualChannelMap?.[hwIndex] ?? 1;
+		const currentCount = clampVirtualChannelCount(song?.virtualChannelMap?.[hwIndex]);
 		const hwLabel = hwLabels[hwIndex] ?? '?';
 		const effectiveLabels = computeEffectiveChannelLabels(
 			hwLabels,
@@ -2454,7 +2455,7 @@
 			items.push({
 				label: `Add virtual channel to ${hwLabel}`,
 				action: 'add_virtual_channel',
-				disabled: isPlaying
+				disabled: isPlaying || currentCount >= MAX_VIRTUAL_CHANNELS_PER_HARDWARE_CHANNEL
 			});
 			if (currentCount > 1) {
 				items.push({
