@@ -80,6 +80,10 @@ if (-not $python) {
     exit 1
 }
 
+foreach ($dir in @('public/ay', 'public/nes', 'public/saa')) {
+    New-Item -ItemType Directory -Force -Path $dir | Out-Null
+}
+
 & $python $emccPy @emccArgs @ayumiArgs
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 & $python $emccPy @emccArgs @nesApuArgs

@@ -1,4 +1,5 @@
 #!/bin/bash
+set -e
 
 # Source Emscripten environment if EMSDK is set
 if [ -n "$EMSDK" ]; then
@@ -9,6 +10,13 @@ if ! command -v emcc &> /dev/null; then
     echo "Error: emcc not found. Please install Emscripten first."
     exit 1
 fi
+
+if ! command -v em++ &> /dev/null; then
+    echo "Error: em++ not found. Please install Emscripten first."
+    exit 1
+fi
+
+mkdir -p public/ay public/nes public/saa
 
 EMCC_ARGS="\
     -O3 \
