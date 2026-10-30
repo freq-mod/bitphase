@@ -25,9 +25,9 @@ export const newSongOptions: NewSongOption[] = [
 		examples: 'NES, Famicom'
 	},
 	{
-		label: 'Philips SAA1099 (WIP)',
+		label: 'SAA1099 (WIP)',
 		action: 'new-song-saa',
-		examples: 'SAM Coupé, Game Blaster'
+		examples: 'SAM Coupé, Creative Music System'
 	}
 ];
 

@@ -8,7 +8,7 @@ import type { Chip } from '../types';
 
 export const SAA_CHIP: Chip = {
 	type: 'saa',
-	name: 'Philips SAA1099',
+	name: 'SAA1099',
 	wasmUrl: 'saa/saasound.wasm',
 	audioSlotKind: SAA_AUDIO_SLOT_KIND,
 	processorMap: (chip) => new SAAProcessor(chip),
