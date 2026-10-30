@@ -60,8 +60,7 @@
 	function advanceSpeedTablePosition(position: number, table: Table): number {
 		let next = position + 1;
 		if (next >= table.rows.length) {
-			next =
-				table.loop >= 0 && table.loop < table.rows.length ? table.loop : 0;
+			next = table.loop >= 0 && table.loop < table.rows.length ? table.loop : 0;
 		}
 		return next;
 	}
@@ -96,6 +95,14 @@
 
 		if (selectedFieldKey === 'volume') {
 			return 'Volume: Set channel volume (1-F), 0 = mute, . = keep previous.';
+		}
+
+		if (selectedFieldKey === 'left') {
+			return 'Left volume: Set the left output level (1-F), 0 = silence, . = keep previous.';
+		}
+
+		if (selectedFieldKey === 'right') {
+			return 'Right volume: Set the right output level (1-F), 0 = silence, . = keep previous.';
 		}
 
 		if (isChannelEffectFieldKey(selectedFieldKey)) {
@@ -270,8 +277,7 @@
 			if (orderIdx >= patternOrder.length) break;
 
 			const patternsAtOrder = patternsAtOrderIndex(patternLists, patternOrder, orderIdx);
-			const leader =
-				patternsAtOrder[TIMELINE_SONG_INDEX] ?? patternsAtOrder[0] ?? null;
+			const leader = patternsAtOrder[TIMELINE_SONG_INDEX] ?? patternsAtOrder[0] ?? null;
 			if (!leader) continue;
 
 			const maxRow = orderIdx === targetPatternOrderIndex ? targetRow : leader.length - 1;
@@ -347,12 +353,10 @@
 			if (orderIdx >= patternOrder.length) break;
 
 			const patternsAtOrder = patternsAtOrderIndex(patternLists, patternOrder, orderIdx);
-			const leader =
-				patternsAtOrder[TIMELINE_SONG_INDEX] ?? patternsAtOrder[0] ?? null;
+			const leader = patternsAtOrder[TIMELINE_SONG_INDEX] ?? patternsAtOrder[0] ?? null;
 			if (!leader) continue;
 
-			const maxRow =
-				orderIdx === targetPatternOrderIndex ? targetRow : leader.length - 1;
+			const maxRow = orderIdx === targetPatternOrderIndex ? targetRow : leader.length - 1;
 
 			for (let rowIdx = 0; rowIdx <= maxRow; rowIdx++) {
 				const result = getRowSpeedWithTables(

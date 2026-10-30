@@ -5,6 +5,7 @@ import type { PatternConverter } from '../../chips/base/adapter';
 import type { GenericChannel } from '../../models/song/generic';
 import { PatternTemplateParser } from './editing/pattern-template-parsing';
 import { getPatternEffectColumnCounts } from '../../chips/base/channel-effect-columns';
+import { rowSlots, slotIndexForCell } from '../../chips/base/global-anchors';
 
 export interface NavigationState {
 	selectedRow: number;
@@ -172,9 +173,9 @@ export class PatternNavigationService {
 			schema
 		);
 		const cellPositions = getCellPositions(rowString, state.selectedRow);
-		const hasGlobal = !!(schema.globalTemplate && schema.globalFields);
 		const channelCount = genericPattern.channels.length;
-		const totalSlots = (hasGlobal ? 1 : 0) + channelCount;
+		const slots = rowSlots(schema, channelCount);
+		const totalSlots = slots.length;
 		if (totalSlots <= 1) return state;
 
 		const effectColumnCounts = getPatternEffectColumnCounts(currentPattern);
@@ -186,18 +187,16 @@ export class PatternNavigationService {
 				continue;
 			}
 			const isGlobal = !!schema.globalFields?.[cell.fieldKey];
-			if (isGlobal) {
-				slotForColumn[col] = 0;
-			} else {
-				const channelIndex = PatternTemplateParser.calculateChannelIndexForField(
-					cell.fieldKey,
-					cell.charIndex,
-					rowString,
-					schema,
-					effectColumnCounts
-				);
-				slotForColumn[col] = (hasGlobal ? 1 : 0) + channelIndex;
-			}
+			const channelIndex = isGlobal
+				? -1
+				: PatternTemplateParser.calculateChannelIndexForField(
+						cell.fieldKey,
+						cell.charIndex,
+						rowString,
+						schema,
+						effectColumnCounts
+					);
+			slotForColumn[col] = slotIndexForCell(slots, cell.fieldKey, isGlobal, channelIndex);
 		}
 
 		const firstColumnForSlot: number[] = [];

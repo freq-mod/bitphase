@@ -3,11 +3,7 @@ import type { PatternFormatter } from '../chips/base/formatter-interface';
 import type { getColors } from '../utils/colors';
 import { Cache } from '../utils/memoize';
 import { PatternTemplateParser } from '../services/pattern/editing/pattern-template-parsing';
-import {
-	getChannelLayout,
-	MIN_CHANNEL_EFFECT_COLUMNS,
-	resolveSchemaField
-} from '../chips/base/channel-effect-columns';
+import { resolveSchemaField } from '../chips/base/channel-effect-columns';
 
 export interface FieldSegment {
 	start: number;
@@ -81,75 +77,23 @@ export class PatternEditorTextParser {
 				color: this.colors[colorKey as keyof typeof this.colors] || this.colors.patternText
 			});
 		}
-		skipSpaces();
 
-		if (this.schema.globalTemplate && this.schema.globalFields) {
-			PatternTemplateParser.parseTemplate(
-				this.schema.globalTemplate,
-				this.schema.globalFields,
-				(key, field, isSpace) => {
-					if (isSpace) {
-						pos++;
-					} else {
-						const colorKey = this.formatter.getColorForField(key, this.schema);
-						const color =
-							this.colors[colorKey as keyof typeof this.colors] ||
-							this.colors.patternText;
-						segments.push({
-							start: pos,
-							end: pos + field.length,
-							fieldKey: key,
-							color
-						});
-						pos += field.length;
-					}
-				}
-			);
-			skipSpaces();
-		}
+		const pushField = (key: string, field: { length: number }, start: number) => {
+			const colorKey = this.formatter.getColorForField(key, this.schema);
+			const color =
+				this.colors[colorKey as keyof typeof this.colors] || this.colors.patternText;
+			segments.push({
+				start,
+				end: start + field.length,
+				fieldKey: key,
+				color
+			});
+		};
 
-		const counts = this.effectColumnCounts;
-		let channelIndex = 0;
-		while (pos < rowString.length) {
-			skipSpaces();
-			if (pos >= rowString.length) break;
-			if (counts.length > 0 && channelIndex >= counts.length) break;
-
-			const layout = getChannelLayout(
-				this.schema,
-				counts[channelIndex] ?? MIN_CHANNEL_EFFECT_COLUMNS
-			);
-			const channelStart = pos;
-			let foundField = false;
-
-			PatternTemplateParser.parseTemplate(
-				layout.template,
-				layout.fields,
-				(key, field, isSpace) => {
-					if (isSpace) {
-						if (pos < rowString.length && rowString[pos] === ' ') {
-							pos++;
-						}
-					} else {
-						const colorKey = this.formatter.getColorForField(key, this.schema);
-						const color =
-							this.colors[colorKey as keyof typeof this.colors] ||
-							this.colors.patternText;
-						segments.push({
-							start: pos,
-							end: pos + field.length,
-							fieldKey: key,
-							color
-						});
-						pos += field.length;
-						foundField = true;
-					}
-				}
-			);
-
-			if (!foundField || pos === channelStart) break;
-			channelIndex++;
-		}
+		PatternTemplateParser.walkRow(rowString, this.schema, this.effectColumnCounts, {
+			onGlobalField: pushField,
+			onChannelField: (_channelIndex, key, field, start) => pushField(key, field, start)
+		});
 		this.rowSegmentsCache.set(cacheKey, segments);
 		return segments;
 	}

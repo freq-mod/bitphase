@@ -26,6 +26,7 @@ import { editorStateStore } from '../../stores/editor-state.svelte';
 import { loadDemoProject } from '../../config/demo-songs';
 import { AY_CHIP } from '../../chips/ay';
 import { NES_CHIP } from '../../chips/nes';
+import { SAA_CHIP } from '../../chips/saa';
 import type { Chip } from '../../chips/types';
 import type { MenuActionContext } from './menu-action-context';
 import { projectStore } from '../../stores/project.svelte';
@@ -233,6 +234,11 @@ export function createMenuActionHandler(ctx: MenuActionContext) {
 
 			if (data.action === 'new-song-nes') {
 				await createNewSongFromMenu(ctx, NES_CHIP);
+				return;
+			}
+
+			if (data.action === 'new-song-saa') {
+				await createNewSongFromMenu(ctx, SAA_CHIP);
 				return;
 			}
 

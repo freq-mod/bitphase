@@ -5,17 +5,13 @@ import { PatternTemplateParser } from '../services/pattern/editing/pattern-templ
 import type { getColors } from '../utils/colors';
 import type { VirtualChannelGroup } from '../models/virtual-channels';
 import {
-	getChannelLayout,
 	isEffectFieldKey,
 	MAX_CHANNEL_EFFECT_COLUMNS,
 	MIN_CHANNEL_EFFECT_COLUMNS,
 	resolveSchemaField,
 	schemaHasChannelEffects
 } from '../chips/base/channel-effect-columns';
-import {
-	emptyNoteBaselineYOffset,
-	type EmptyNoteAlignment
-} from './empty-note-alignment';
+import { emptyNoteBaselineYOffset, type EmptyNoteAlignment } from './empty-note-alignment';
 
 export const CHANNEL_LEVEL_STRIP_HEIGHT = 6;
 
@@ -58,6 +54,12 @@ export interface RowRenderData {
 	selectionEndCol?: number | null;
 }
 
+interface RowLayoutPixels {
+	channelPositions: number[];
+	globalColumns: Array<{ fieldKey: string; x: number; width: number }>;
+	anchorSeparatorXs: number[];
+}
+
 export interface ChannelLabelData {
 	rowString: string;
 	channelLabels: string[];
@@ -82,8 +84,13 @@ export class PatternEditorRenderer extends BaseCanvasRenderer {
 	private selectionStyle: 'inverted' | 'filled';
 	private emptyNoteAlignment: EmptyNoteAlignment;
 	private emptyNoteBaselineOffset: number | null = null;
-	private channelPositionsCacheKey = '';
-	private channelPositionsCache: number[] = [];
+	private layoutCacheKey = '';
+	private layoutCache: RowLayoutPixels = {
+		channelPositions: [],
+		globalColumns: [],
+		anchorSeparatorXs: []
+	};
+	private anchorSeparatorXs: number[] = [];
 	private effectColumnCounts: number[] = [];
 	private effectColumnControlsEnabled = true;
 
@@ -180,9 +187,7 @@ export class PatternEditorRenderer extends BaseCanvasRenderer {
 		data: ChannelLabelData
 	): void {
 		const channelPositions =
-			data.channelLevels !== undefined
-				? this.calculateChannelPositions(data.rowString)
-				: [];
+			data.channelLevels !== undefined ? this.calculateChannelPositions(data.rowString) : [];
 		const saved = this.ctx;
 		this.ctx = overlayCtx;
 		overlayCtx.clearRect(0, 0, this.canvasWidth, CHANNEL_LEVEL_STRIP_HEIGHT);
@@ -242,15 +247,11 @@ export class PatternEditorRenderer extends BaseCanvasRenderer {
 			}
 
 			const groupStart = channelPositions[firstIdx];
-			const groupEnd =
-				lastIdx < channelPositions.length - 1
-					? channelPositions[lastIdx + 1]
-					: this.canvasWidth;
+			const groupEnd = this.channelColumnEnd(lastIdx, channelPositions);
 			const groupX = Math.max(0, groupStart - separatorMargin);
 			const groupWidth =
-				(lastIdx < channelPositions.length - 1
-					? groupEnd - separatorMargin
-					: this.canvasWidth) - groupX;
+				(groupEnd < this.canvasWidth ? groupEnd - separatorMargin : this.canvasWidth) -
+				groupX;
 			const groupBorderColor =
 				this.patternColors.patternCellSelected ||
 				this.patternColors.patternSelected ||
@@ -283,11 +284,10 @@ export class PatternEditorRenderer extends BaseCanvasRenderer {
 		isMuted: boolean
 	): void {
 		const channelStart = channelPositions[index];
-		const channelEnd =
-			index < channelPositions.length - 1 ? channelPositions[index + 1] : this.canvasWidth;
+		const channelEnd = this.channelColumnEnd(index, channelPositions);
 		const buttonX = Math.max(0, channelStart - separatorMargin);
 		const buttonEnd =
-			index < channelPositions.length - 1 ? channelEnd - separatorMargin : this.canvasWidth;
+			channelEnd < this.canvasWidth ? channelEnd - separatorMargin : this.canvasWidth;
 		const buttonWidth = buttonEnd - buttonX;
 		const buttonHeight = this.lineHeight - 4;
 		const buttonY = (this.lineHeight - buttonHeight) / 2;
@@ -299,7 +299,7 @@ export class PatternEditorRenderer extends BaseCanvasRenderer {
 			? controlLayout.width * 2 + controlLayout.gap + controlLayout.margin * 2
 			: 0;
 		const textAreaWidth = Math.max(0, buttonWidth - controlsWidth);
-		const textX = buttonX + Math.max(0, (textAreaWidth - (labelWidth-8)) / 2);
+		const textX = buttonX + Math.max(0, (textAreaWidth - (labelWidth - 8)) / 2);
 		const headerColor = this.patternColors.patternRowNum || this.patternColors.patternText;
 		const textColor = isMuted ? this.patternColors.patternEmpty : headerColor;
 		const borderColor = isMuted
@@ -387,7 +387,12 @@ export class PatternEditorRenderer extends BaseCanvasRenderer {
 		add: { x: number; y: number; width: number; height: number };
 	} {
 		const layout = this.getEffectColumnControlLayout(buttonHeight);
-		const visual = this.getEffectColumnControlRects(buttonX, buttonWidth, buttonY, buttonHeight);
+		const visual = this.getEffectColumnControlRects(
+			buttonX,
+			buttonWidth,
+			buttonY,
+			buttonHeight
+		);
 		const splitX = visual.remove.x + visual.remove.width + layout.gap / 2;
 		const removeLeft = visual.remove.x - layout.hitPadX;
 		const addRight = visual.add.x + visual.add.width + layout.hitPadX;
@@ -416,11 +421,9 @@ export class PatternEditorRenderer extends BaseCanvasRenderer {
 		textColor: string,
 		centerY: number
 	): void {
-		const count =
-			this.effectColumnCounts[channelIndex] ?? MIN_CHANNEL_EFFECT_COLUMNS;
+		const count = this.effectColumnCounts[channelIndex] ?? MIN_CHANNEL_EFFECT_COLUMNS;
 		const rects = this.getEffectColumnControlRects(buttonX, buttonWidth, buttonY, buttonHeight);
-		const canRemove =
-			this.effectColumnControlsEnabled && count > MIN_CHANNEL_EFFECT_COLUMNS;
+		const canRemove = this.effectColumnControlsEnabled && count > MIN_CHANNEL_EFFECT_COLUMNS;
 		const canAdd = this.effectColumnControlsEnabled && count < MAX_CHANNEL_EFFECT_COLUMNS;
 		this.drawEffectColumnControl(rects.remove, 'remove', textColor, canRemove, centerY);
 		this.drawEffectColumnControl(rects.add, 'add', textColor, canAdd, centerY);
@@ -465,13 +468,10 @@ export class PatternEditorRenderer extends BaseCanvasRenderer {
 
 		for (let index = 0; index < channelPositions.length; index++) {
 			const channelStart = channelPositions[index];
-			const channelEnd =
-				index < channelPositions.length - 1
-					? channelPositions[index + 1]
-					: this.canvasWidth;
+			const channelEnd = this.channelColumnEnd(index, channelPositions);
 			const buttonX = Math.max(0, channelStart - separatorMargin);
 			const buttonEnd =
-				index < channelPositions.length - 1 ? channelEnd - separatorMargin : this.canvasWidth;
+				channelEnd < this.canvasWidth ? channelEnd - separatorMargin : this.canvasWidth;
 			const buttonWidth = buttonEnd - buttonX;
 			const rects = this.getEffectColumnControlHitRects(
 				buttonX,
@@ -479,8 +479,7 @@ export class PatternEditorRenderer extends BaseCanvasRenderer {
 				buttonY,
 				buttonHeight
 			);
-			const count =
-				this.effectColumnCounts[index] ?? MIN_CHANNEL_EFFECT_COLUMNS;
+			const count = this.effectColumnCounts[index] ?? MIN_CHANNEL_EFFECT_COLUMNS;
 			const controlsEnabled = this.effectColumnControlsEnabled;
 			if (
 				this.pointInControl(x, y, rects.remove) &&
@@ -520,11 +519,10 @@ export class PatternEditorRenderer extends BaseCanvasRenderer {
 
 		for (let i = 0; i < channelPositions.length; i++) {
 			const channelStart = channelPositions[i];
-			const channelEnd =
-				i < channelPositions.length - 1 ? channelPositions[i + 1] : this.canvasWidth;
+			const channelEnd = this.channelColumnEnd(i, channelPositions);
 			const buttonX = Math.max(0, channelStart - separatorMargin);
 			const buttonEnd =
-				i < channelPositions.length - 1 ? channelEnd - separatorMargin : this.canvasWidth;
+				channelEnd < this.canvasWidth ? channelEnd - separatorMargin : this.canvasWidth;
 			const buttonWidth = buttonEnd - buttonX;
 			const isMuted = data.channelMuted[i] ?? false;
 			const level = isMuted ? 0 : (levels[i] ?? 0);
@@ -581,9 +579,14 @@ export class PatternEditorRenderer extends BaseCanvasRenderer {
 		const margin = 4;
 		const startY = this.lineHeight;
 
-		for (let i = 0; i < channelPositions.length; i++) {
-			const x = Math.floor(channelPositions[i] - margin) + 0.5;
-			const isGroupBoundary = groupBoundaryIndices.has(i);
+		const separatorXs = [
+			...channelPositions,
+			...this.anchorSeparatorXs.filter((anchorX) => !channelPositions.includes(anchorX))
+		];
+		for (let i = 0; i < separatorXs.length; i++) {
+			const x = Math.floor(separatorXs[i] - margin) + 0.5;
+			const channelIndex = channelPositions.indexOf(separatorXs[i]);
+			const isGroupBoundary = channelIndex >= 0 && groupBoundaryIndices.has(channelIndex);
 
 			if (hasVirtualGroups && !isGroupBoundary) {
 				this.ctx.strokeStyle =
@@ -610,130 +613,71 @@ export class PatternEditorRenderer extends BaseCanvasRenderer {
 	calculateGlobalColumnPositions(
 		rowString: string
 	): Array<{ fieldKey: string; x: number; width: number }> {
-		const result: Array<{ fieldKey: string; x: number; width: number }> = [];
-		if (!this.schema.globalTemplate || !this.schema.globalFields) return result;
-
-		let pos = PatternTemplateParser.skipRowNumber(rowString, 0);
-		let x = 10;
-		for (let i = 0; i < pos; i++) {
-			x += this.measureText(rowString[i]);
-		}
-
-		PatternTemplateParser.parseTemplate(
-			this.schema.globalTemplate,
-			this.schema.globalFields,
-			(key, field, isSpace) => {
-				if (isSpace) {
-					if (pos < rowString.length && rowString[pos] === ' ') {
-						x += this.measureText(' ');
-						pos++;
-					}
-				} else {
-					const startX = x;
-					const segment = rowString.substring(pos, pos + field.length);
-					const width = this.measureText(segment);
-					result.push({ fieldKey: key, x: startX, width });
-					x += width;
-					pos += field.length;
-				}
-			}
-		);
-		return result;
+		return this.getRowLayout(rowString).globalColumns;
 	}
 
 	calculateChannelPositions(rowString: string): number[] {
+		return this.getRowLayout(rowString).channelPositions;
+	}
+
+	private getRowLayout(rowString: string): RowLayoutPixels {
 		const cacheKey = `${this.ctx.font}\0${rowString}\0${this.effectColumnCounts.join(',')}`;
-		if (cacheKey === this.channelPositionsCacheKey) {
-			return this.channelPositionsCache;
+		if (cacheKey === this.layoutCacheKey) {
+			this.anchorSeparatorXs = this.layoutCache.anchorSeparatorXs;
+			return this.layoutCache;
 		}
 
-		const positions: number[] = [];
-		let x = 10;
-		let i = 0;
-
-		const advanceChar = () => {
-			if (i < rowString.length) {
-				const char = rowString[i];
-				x += this.measureText(char);
-				i++;
+		const marks: Array<{
+			kind: 'global' | 'channel';
+			pos: number;
+			fieldKey?: string;
+			length?: number;
+		}> = [];
+		PatternTemplateParser.walkRow(rowString, this.schema, this.effectColumnCounts, {
+			onGlobalField(key, field, pos) {
+				marks.push({ kind: 'global', pos, fieldKey: key, length: field.length });
+			},
+			onChannelStart(_index, pos) {
+				marks.push({ kind: 'channel', pos });
 			}
-		};
+		});
 
-		const skipSpaces = () => {
-			while (i < rowString.length && rowString[i] === ' ') {
-				x += this.measureText(' ');
-				i++;
-			}
-		};
-
-		skipSpaces();
-
-		while (i < rowString.length && rowString[i] !== ' ') {
-			advanceChar();
-		}
-		skipSpaces();
-
-		if (this.schema.globalTemplate && this.schema.globalFields) {
-			PatternTemplateParser.parseTemplate(
-				this.schema.globalTemplate,
-				this.schema.globalFields,
-				(key, field, isSpace) => {
-					if (isSpace) {
-						if (i < rowString.length && rowString[i] === ' ') {
-							advanceChar();
-						}
-					} else {
-						for (let j = 0; j < field.length && i < rowString.length; j++) {
-							advanceChar();
-						}
-					}
-				}
-			);
-			skipSpaces();
+		const xAt: number[] = [10];
+		for (let i = 0; i < rowString.length; i++) {
+			xAt.push(xAt[i] + this.measureText(rowString[i]));
 		}
 
-		const counts = this.effectColumnCounts;
-		let channelIndex = 0;
-		while (i < rowString.length) {
-			skipSpaces();
-			if (i >= rowString.length) break;
-			if (counts.length > 0 && channelIndex >= counts.length) break;
-
-			const layout = getChannelLayout(
-				this.schema,
-				counts[channelIndex] ?? MIN_CHANNEL_EFFECT_COLUMNS
-			);
-			const channelStart = x;
-			let foundField = false;
-
-			PatternTemplateParser.parseTemplate(
-				layout.template,
-				layout.fields,
-				(key, field, isSpace) => {
-					if (isSpace) {
-						if (i < rowString.length && rowString[i] === ' ') {
-							advanceChar();
-						}
-					} else {
-						for (let j = 0; j < field.length && i < rowString.length; j++) {
-							advanceChar();
-						}
-						foundField = true;
-					}
-				}
-			);
-
-			if (foundField) {
-				positions.push(channelStart);
-				channelIndex++;
-			} else {
-				break;
+		const channelPositions: number[] = [];
+		const globalColumns: Array<{ fieldKey: string; x: number; width: number }> = [];
+		for (const mark of marks) {
+			const x = xAt[mark.pos] ?? 10;
+			if (mark.kind === 'channel') {
+				channelPositions.push(x);
+			} else if (mark.fieldKey && mark.length) {
+				const end = xAt[mark.pos + mark.length] ?? x;
+				globalColumns.push({ fieldKey: mark.fieldKey, x, width: end - x });
 			}
 		}
 
-		this.channelPositionsCacheKey = cacheKey;
-		this.channelPositionsCache = positions;
-		return positions;
+		const firstChannelX = channelPositions[0] ?? Number.POSITIVE_INFINITY;
+		const anchorSeparatorXs = globalColumns
+			.filter((column) => column.x >= firstChannelX)
+			.map((column) => column.x);
+		const layout = { channelPositions, globalColumns, anchorSeparatorXs };
+		this.layoutCacheKey = cacheKey;
+		this.layoutCache = layout;
+		this.anchorSeparatorXs = anchorSeparatorXs;
+		return layout;
+	}
+
+	private channelColumnEnd(index: number, channelPositions: number[]): number {
+		const start = channelPositions[index] ?? 0;
+		let end =
+			index < channelPositions.length - 1 ? channelPositions[index + 1] : this.canvasWidth;
+		for (const anchorX of this.anchorSeparatorXs) {
+			if (anchorX > start && anchorX < end) end = anchorX;
+		}
+		return end;
 	}
 
 	private isAlternateRow(rowIndex: number): boolean {
@@ -888,43 +832,14 @@ export class PatternEditorRenderer extends BaseCanvasRenderer {
 		const indices = new Int16Array(rowString.length);
 		indices.fill(-1);
 
-		let pos = PatternTemplateParser.skipRowNumber(rowString, 0);
-		pos = PatternTemplateParser.parseGlobalTemplate(rowString, pos, this.schema);
-
-		let channelIndex = 0;
-		const counts = this.effectColumnCounts;
-
-		while (pos < rowString.length) {
-			pos = PatternTemplateParser.skipSpaces(rowString, pos);
-			if (pos >= rowString.length) break;
-			if (counts.length > 0 && channelIndex >= counts.length) break;
-
-			const layout = getChannelLayout(
-				this.schema,
-				counts[channelIndex] ?? MIN_CHANNEL_EFFECT_COLUMNS
-			);
-			const channelStart = pos;
-			PatternTemplateParser.parseTemplate(
-				layout.template,
-				layout.fields,
-				(_key, field, isSpace) => {
-					if (isSpace) {
-						if (pos < rowString.length && rowString[pos] === ' ') {
-							pos++;
-						}
-					} else {
-						const end = Math.min(pos + field.length, rowString.length);
-						for (let i = pos; i < end; i++) {
-							indices[i] = channelIndex;
-						}
-						pos = end;
-					}
+		PatternTemplateParser.walkRow(rowString, this.schema, this.effectColumnCounts, {
+			onChannelField(channelIndex, _key, field, pos) {
+				const end = Math.min(pos + field.length, rowString.length);
+				for (let i = pos; i < end; i++) {
+					indices[i] = channelIndex;
 				}
-			);
-
-			if (pos === channelStart) break;
-			channelIndex++;
-		}
+			}
+		});
 
 		return indices;
 	}

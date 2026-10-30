@@ -65,12 +65,18 @@ export interface GlobalStickyRowRead {
 	fieldKey?: string;
 }
 
+export interface GlobalAnchor {
+	field: string;
+	beforeChannel: number;
+}
+
 export interface ChipSchema {
 	chipType: string;
 	template: string;
 	fields: Record<string, ChipField>;
 	globalTemplate?: string;
 	globalFields?: Record<string, ChipField>;
+	globalAnchors?: GlobalAnchor[];
 	channelLabels?: string[];
 	globalColumnLabels?: Record<string, string>;
 	settings?: ChipSetting[];

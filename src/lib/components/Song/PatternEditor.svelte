@@ -163,9 +163,7 @@
 	const speed = $derived(projectStore.getInitialSpeed());
 	const instruments = $derived(filterInstrumentsForChip(projectStore.instruments, chip.type));
 	const instrumentColorFingerprint = $derived(
-		[...instrumentColorsById(instruments)]
-			.map(([id, color]) => `${id}:${color}`)
-			.join('|')
+		[...instrumentColorsById(instruments)].map(([id, color]) => `${id}:${color}`).join('|')
 	);
 	const tables = $derived(projectStore.tables);
 
@@ -215,7 +213,10 @@
 	const pressedKeyChannels = new Map<string, number>();
 	let previewInitialized = false;
 
-	function createEmptyPatternForSong(patternId: number, forSongIndex: number = songIndex): Pattern {
+	function createEmptyPatternForSong(
+		patternId: number,
+		forSongIndex: number = songIndex
+	): Pattern {
 		const song = projectStore.songs[forSongIndex];
 		const songSchema =
 			song?.getSchema() ??
@@ -321,8 +322,7 @@
 	let fontSize = $derived(settingsStore.patternEditorFontSize);
 	let fontFamily = $derived(settingsStore.patternEditorFontFamily);
 	let patternEditorFontString = $derived.by(() => {
-		const effectiveFontFamily =
-			fontFamily === 'monospace' ? 'monospace' : `"${fontFamily}"`;
+		const effectiveFontFamily = fontFamily === 'monospace' ? 'monospace' : `"${fontFamily}"`;
 		const fontFallback = fontFamily === 'monospace' ? 'monospace' : FONTS.mono;
 		return `${fontSize}px ${effectiveFontFamily}, ${fontFallback}`;
 	});
@@ -341,6 +341,7 @@
 	let selectionEndColumn = $state<number | null>(null);
 	let isSelecting = $state(false);
 	let mouseDownCell: { row: number; column: number } | null = null;
+	let pressOnInactiveEditor = false;
 	let autoScrollInterval: number | null = null;
 	let autoScrollDirection: number = 0;
 	let isEnterKeyHeld = $state(false);
@@ -427,17 +428,21 @@
 		untrack(() => scheduleDraw());
 	});
 
-	let lastActiveState = isActive;
+	let lastActiveState = false;
 	$effect(() => {
-		const becameActive = isActive && !lastActiveState;
-		lastActiveState = isActive;
+		const active = isActive;
+		const activityChanged = active !== lastActiveState;
+		const becameActive = active && !lastActiveState;
+		lastActiveState = active;
+
+		if (!activityChanged) return;
 
 		if (becameActive) {
 			clearAllCaches();
 			lastVisibleRowsCache = null;
-			if (ctx && renderer && textParser) {
-				draw();
-			}
+		}
+		if (ctx && renderer && textParser) {
+			draw();
 		}
 	});
 
@@ -1297,15 +1302,14 @@
 
 				if (!textParser || !renderer) continue;
 				const parsedSegments = textParser.parseRowString(rowString, row.rowIndex);
-				const segments =
-					instrumentCarry
-						? applyInstrumentColorsToSegments(
-								parsedSegments,
-								rowString,
-								instrumentColors,
-								instrumentCarry.idsAt(row.orderIndex, row.rowIndex)
-							)
-						: parsedSegments;
+				const segments = instrumentCarry
+					? applyInstrumentColorsToSegments(
+							parsedSegments,
+							rowString,
+							instrumentColors,
+							instrumentCarry.idsAt(row.orderIndex, row.rowIndex)
+						)
+					: parsedSegments;
 				const cellPositions = getCellPositions(rowString, row.rowIndex);
 				const channelMuted = getCachedChannelMuted(patternToRender);
 
@@ -1324,12 +1328,19 @@
 					selectionEndCol = bounds.maxCol;
 				}
 
+				const cursorOverride = pressOnInactiveEditor ? mouseDownCell : null;
+
 				renderer.drawRow({
 					rowString,
 					y,
-					isSelected: row.isSelected && isActive,
+					isSelected:
+						isActive &&
+						isCurrentPattern &&
+						(cursorOverride
+							? row.rowIndex === cursorOverride.row
+							: row.isSelected),
 					rowIndex: row.rowIndex,
-					selectedColumn,
+					selectedColumn: cursorOverride?.column ?? selectedColumn,
 					segments,
 					cellPositions,
 					channelMuted,
@@ -1345,7 +1356,6 @@
 		if (header) {
 			renderer.drawChannelSeparators(header.rowString, canvasHeight, header.vcGroups);
 		}
-
 	}
 
 	function drawHeaderOverlay(): void {
@@ -2036,6 +2046,7 @@
 			midiService.requestAccess();
 		}
 
+		const placingCursor = !isActive;
 		canvas.focus();
 		const selection = window.getSelection();
 		if (selection) {
@@ -2155,12 +2166,21 @@
 		}
 
 		mouseDownCell = { row: cell.row, column: cell.column };
+		pressOnInactiveEditor = false;
 
-		if (event.shiftKey && selectionStartRow !== null) {
+		if (!placingCursor && event.shiftKey && selectionStartRow !== null) {
 			selectionEndRow = cell.row;
 			selectionEndColumn = cell.column;
 			selectedRow = cell.row;
 			selectedColumn = cell.column;
+		} else if (placingCursor) {
+			selectionStartRow = null;
+			selectionStartColumn = null;
+			selectionEndRow = null;
+			selectionEndColumn = null;
+			pressOnInactiveEditor = true;
+			window.addEventListener('mousemove', handleGlobalMouseMove);
+			window.addEventListener('mouseup', handleCanvasMouseUp);
 		} else {
 			window.addEventListener('mousemove', handleGlobalMouseMove);
 			window.addEventListener('mouseup', handleCanvasMouseUp);
@@ -2218,9 +2238,13 @@
 			selectionEndColumn = null;
 			selectedRow = mouseDownCell.row;
 			selectedColumn = mouseDownCell.column;
+		} else if (mouseDownCell && pressOnInactiveEditor) {
+			selectedRow = mouseDownCell.row;
+			selectedColumn = mouseDownCell.column;
 		}
 		isSelecting = false;
 		mouseDownCell = null;
+		pressOnInactiveEditor = false;
 		draw();
 	}
 
@@ -2422,9 +2446,7 @@
 	}
 
 	function supportsVirtualChannels(): boolean {
-		return Boolean(
-			chipProcessor && 'sendVirtualChannelConfig' in chipProcessor
-		);
+		return Boolean(chipProcessor && 'sendVirtualChannelConfig' in chipProcessor);
 	}
 
 	function getChannelContextMenuItems(): MenuItem[] {
@@ -3055,6 +3077,7 @@
 		selectionEndColumn = null;
 		isSelecting = false;
 		mouseDownCell = null;
+		pressOnInactiveEditor = false;
 	}
 
 	$effect(() => {
@@ -3245,10 +3268,7 @@
 		if (!orderIndexGate.consume(pending.orderIndex)) return false;
 
 		selectedRow = pending.row;
-		if (
-			pending.orderIndex !== undefined &&
-			services.audioService.getPlayPatternId() === null
-		) {
+		if (pending.orderIndex !== undefined && services.audioService.getPlayPatternId() === null) {
 			currentPatternOrderIndex = pending.orderIndex;
 			lastPatternOrderIndexFromPlayback = pending.orderIndex;
 		}
@@ -3288,10 +3308,7 @@
 		}
 	});
 
-	export function markPatternChangeFromUser(
-		selectedIndex?: number,
-		immediate = true
-	): void {
+	export function markPatternChangeFromUser(selectedIndex?: number, immediate = true): void {
 		const index = selectedIndex ?? currentPatternOrderIndex;
 		discardPendingPlaybackPosition(index);
 		lastPatternOrderIndexFromPlayback = index;

@@ -2,6 +2,7 @@ import type { Pattern } from '../../models/song';
 import type { Chip } from '../../chips/types';
 import { PatternTemplateParser } from './editing/pattern-template-parsing';
 import { getPatternEffectColumnCounts } from '../../chips/base/channel-effect-columns';
+import { usesAnchoredGlobals } from '../../chips/base/global-anchors';
 
 export interface ProgressiveSelectionResult {
 	startRow: number;
@@ -50,8 +51,7 @@ export class ProgressiveSelectionService {
 				const isFullWidth =
 					minCol === boundsUnion.startColumn && maxCol === boundsUnion.endColumn;
 				if (isFullWidth) {
-					const isFullHeight =
-						minRow === 0 && maxRow === pattern.length - 1;
+					const isFullHeight = minRow === 0 && maxRow === pattern.length - 1;
 					if (isFullHeight) {
 						return this.selectEntirePattern(
 							pattern,
@@ -114,7 +114,11 @@ export class ProgressiveSelectionService {
 					);
 
 					if (isAllGlobalFields) {
-						return this.selectEntirePattern(pattern, getCellPositions, getPatternRowData);
+						return this.selectEntirePattern(
+							pattern,
+							getCellPositions,
+							getPatternRowData
+						);
 					} else {
 						return this.selectAllGlobalFields(pattern, globalBounds);
 					}
@@ -160,7 +164,11 @@ export class ProgressiveSelectionService {
 					);
 
 					if (isAllGlobalFields) {
-						return this.selectEntirePattern(pattern, getCellPositions, getPatternRowData);
+						return this.selectEntirePattern(
+							pattern,
+							getCellPositions,
+							getPatternRowData
+						);
 					}
 				}
 			}
@@ -242,16 +250,20 @@ export class ProgressiveSelectionService {
 				getPatternRowData,
 				schema
 			);
-			const bounds = channelBounds ?? this.getGlobalFieldsBounds(
-				pattern,
-				col,
-				getCellPositions,
-				getPatternRowData,
-				schema
-			);
+			const bounds =
+				channelBounds ??
+				this.getGlobalFieldsBounds(
+					pattern,
+					col,
+					getCellPositions,
+					getPatternRowData,
+					schema
+				);
 			if (bounds) {
 				startColumn =
-					startColumn === null ? bounds.startColumn : Math.min(startColumn, bounds.startColumn);
+					startColumn === null
+						? bounds.startColumn
+						: Math.min(startColumn, bounds.startColumn);
 				endColumn =
 					endColumn === null ? bounds.endColumn : Math.max(endColumn, bounds.endColumn);
 			}
@@ -376,13 +388,15 @@ export class ProgressiveSelectionService {
 
 		let startColumn = -1;
 		let endColumn = -1;
+		const anchored = usesAnchoredGlobals(schema);
 
 		for (let i = 0; i < cellPositions.length; i++) {
 			const currentCell = cellPositions[i];
 			if (!currentCell.fieldKey) continue;
 
 			const isCurrentGlobal = !!schema.globalFields?.[currentCell.fieldKey];
-			if (isCurrentGlobal) {
+			const sameColumn = anchored ? currentCell.fieldKey === cell.fieldKey : isCurrentGlobal;
+			if (sameColumn) {
 				if (startColumn === -1) {
 					startColumn = i;
 				}

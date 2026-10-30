@@ -13,11 +13,7 @@ import type { PatternConverter } from '@/lib/chips/base/adapter';
 import type { PatternFormatter } from '@/lib/chips/base/formatter-interface';
 import type { EditingContext } from '@/lib/services/pattern/editing/editing-context';
 import { PatternTemplateParser } from '@/lib/services/pattern/editing/pattern-template-parsing';
-import {
-	getChannelLayout,
-	getPatternEffectColumnCounts,
-	MIN_CHANNEL_EFFECT_COLUMNS
-} from '@/lib/chips/base/channel-effect-columns';
+import { getPatternEffectColumnCounts } from '@/lib/chips/base/channel-effect-columns';
 
 type FieldCell = { x: number; width: number; charIndex: number; fieldKey: string };
 
@@ -38,45 +34,14 @@ function formatPatternRow(
 
 function fieldCellsForRow(rowString: string, schema: ChipSchema, pattern: Pattern): FieldCell[] {
 	const cells: FieldCell[] = [];
-	let pos = PatternTemplateParser.skipRowNumber(rowString, 0);
-	if (schema.globalTemplate && schema.globalFields) {
-		PatternTemplateParser.parseTemplate(
-			schema.globalTemplate,
-			schema.globalFields,
-			(key, field, isSpace) => {
-				if (isSpace) {
-					pos++;
-				} else {
-					cells.push({ x: 0, width: field.length, charIndex: pos, fieldKey: key });
-					pos += field.length;
-				}
-			}
-		);
-		pos = PatternTemplateParser.skipSpaces(rowString, pos);
-	}
-
-	const counts = getPatternEffectColumnCounts(pattern);
-	let channelIndex = 0;
-	while (pos < rowString.length) {
-		pos = PatternTemplateParser.skipSpaces(rowString, pos);
-		if (pos >= rowString.length) break;
-		const layout = getChannelLayout(
-			schema,
-			counts[channelIndex] ?? MIN_CHANNEL_EFFECT_COLUMNS
-		);
-		const channelStart = pos;
-		PatternTemplateParser.parseTemplate(layout.template, layout.fields, (key, field, isSpace) => {
-			if (isSpace) {
-				if (rowString[pos] === ' ') pos++;
-			} else {
-				cells.push({ x: 0, width: field.length, charIndex: pos, fieldKey: key });
-				pos += field.length;
-			}
-		});
-		if (pos === channelStart) break;
-		channelIndex++;
-		if (counts.length > 0 && channelIndex >= counts.length) break;
-	}
+	PatternTemplateParser.walkRow(rowString, schema, getPatternEffectColumnCounts(pattern), {
+		onGlobalField(key, field, pos) {
+			cells.push({ x: 0, width: field.length, charIndex: pos, fieldKey: key });
+		},
+		onChannelField(_channelIndex, key, field, pos) {
+			cells.push({ x: 0, width: field.length, charIndex: pos, fieldKey: key });
+		}
+	});
 	return cells;
 }
 
@@ -90,8 +55,7 @@ function createClipboardContext(
 ): ClipboardContext {
 	const getPatternRowData = (nextPattern: Pattern) =>
 		formatPatternRow(nextPattern, converter, formatter, schema);
-	const getCellPositions = (rowString: string) =>
-		fieldCellsForRow(rowString, schema, pattern);
+	const getCellPositions = (rowString: string) => fieldCellsForRow(rowString, schema, pattern);
 
 	return {
 		pattern,
@@ -130,10 +94,7 @@ describe('ClipboardService effect columns', () => {
 		const formatter = new AYFormatter();
 		const pattern = new Pattern(0, 1, AY_CHIP_SCHEMA);
 		pattern.channels[0].effectColumnCount = 2;
-		pattern.channels[0].rows[0].effects = [
-			new Effect(EffectType.Arpeggio, 1, 0x37),
-			null
-		];
+		pattern.channels[0].rows[0].effects = [new Effect(EffectType.Arpeggio, 1, 0x37), null];
 
 		const targetCell = { x: 0, width: 4, charIndex: 0, fieldKey: 'effect1' };
 		clipboardStore.copy(
@@ -340,17 +301,13 @@ describe('ClipboardService cross-chip paste', () => {
 	});
 });
 
-
 describe('ClipboardService effect columns', () => {
 	it('pastes an effect from the first column into another effect column', async () => {
 		const converter = new AYConverter();
 		const formatter = new AYFormatter();
 		const pattern = new Pattern(0, 1, AY_CHIP_SCHEMA);
 		pattern.channels[0].effectColumnCount = 2;
-		pattern.channels[0].rows[0].effects = [
-			new Effect(EffectType.Arpeggio, 1, 0x37),
-			null
-		];
+		pattern.channels[0].rows[0].effects = [new Effect(EffectType.Arpeggio, 1, 0x37), null];
 
 		const targetCell = { x: 0, width: 4, charIndex: 0, fieldKey: 'effect1' };
 		clipboardStore.copy(

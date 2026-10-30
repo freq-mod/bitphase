@@ -1,5 +1,20 @@
 import type { Chip } from '../../../chips/types';
-import { getChannelLayout, MIN_CHANNEL_EFFECT_COLUMNS } from '../../../chips/base/channel-effect-columns';
+import {
+	getChannelLayout,
+	MIN_CHANNEL_EFFECT_COLUMNS
+} from '../../../chips/base/channel-effect-columns';
+import { anchorsBeforeChannel, usesAnchoredGlobals } from '../../../chips/base/global-anchors';
+
+export interface RowWalkHandlers {
+	onGlobalField?: (key: string, field: { length: number }, pos: number) => void;
+	onChannelStart?: (channelIndex: number, pos: number) => void;
+	onChannelField?: (
+		channelIndex: number,
+		key: string,
+		field: { length: number },
+		pos: number
+	) => void;
+}
 
 export class PatternTemplateParser {
 	static skipSpaces(rowString: string, pos: number): number {
@@ -70,6 +85,64 @@ export class PatternTemplateParser {
 		return this.skipSpaces(rowString, pos);
 	}
 
+	static walkRow(
+		rowString: string,
+		schema: Chip['schema'],
+		effectColumnCounts: number[] | undefined,
+		handlers: RowWalkHandlers
+	): void {
+		let pos = this.skipRowNumber(rowString, 0);
+		const anchored = usesAnchoredGlobals(schema);
+		if (!anchored) {
+			pos = this.parseGlobalTemplate(rowString, pos, schema, (key, field, currentPos) => {
+				handlers.onGlobalField?.(key, field, currentPos);
+				return currentPos + field.length;
+			});
+		}
+
+		const counts = effectColumnCounts ?? [];
+		let channelIndex = 0;
+		while (pos < rowString.length) {
+			if (counts.length > 0 && channelIndex >= counts.length) break;
+
+			if (anchored) {
+				for (const anchor of anchorsBeforeChannel(schema, channelIndex)) {
+					pos = this.skipSpaces(rowString, pos);
+					if (pos >= rowString.length) return;
+					handlers.onGlobalField?.(anchor.field, anchor.definition, pos);
+					pos += anchor.definition.length;
+				}
+			}
+
+			pos = this.skipSpaces(rowString, pos);
+			if (pos >= rowString.length) break;
+
+			const layout = getChannelLayout(
+				schema,
+				counts[channelIndex] ?? MIN_CHANNEL_EFFECT_COLUMNS
+			);
+			const channelStart = pos;
+			let consumedField = false;
+			this.parseTemplate(layout.template, layout.fields, (key, field, isSpace) => {
+				if (isSpace) {
+					if (pos < rowString.length && rowString[pos] === ' ') {
+						pos++;
+					}
+				} else {
+					if (!consumedField) {
+						handlers.onChannelStart?.(channelIndex, channelStart);
+						consumedField = true;
+					}
+					handlers.onChannelField?.(channelIndex, key, field, pos);
+					pos += field.length;
+				}
+			});
+
+			if (!consumedField || pos === channelStart) break;
+			channelIndex++;
+		}
+	}
+
 	static calculateChannelIndexForField(
 		fieldKey: string,
 		charIndex: number,
@@ -77,44 +150,12 @@ export class PatternTemplateParser {
 		schema: Chip['schema'],
 		effectColumnCounts?: number[]
 	): number {
-		let pos = this.skipRowNumber(rowString, 0);
-		pos = this.parseGlobalTemplate(rowString, pos, schema);
-
 		let channelIndex = 0;
-		const counts = effectColumnCounts ?? [];
-		const channelCount = counts.length;
-
-		while (pos < rowString.length && pos < charIndex) {
-			pos = this.skipSpaces(rowString, pos);
-			if (pos >= rowString.length || pos >= charIndex) break;
-
-			const layout = getChannelLayout(
-				schema,
-				counts[channelIndex] ?? MIN_CHANNEL_EFFECT_COLUMNS
-			);
-			const channelStart = pos;
-			this.parseTemplate(layout.template, layout.fields, (key, field, isSpace) => {
-				if (isSpace) {
-					if (pos < rowString.length && rowString[pos] === ' ') {
-						pos++;
-					}
-				} else {
-					if (pos < charIndex) {
-						pos += field.length;
-					}
-				}
-			});
-
-			if (pos === channelStart) break;
-
-			if (pos < charIndex) {
-				channelIndex++;
-				if (channelCount > 0 && channelIndex >= channelCount) break;
-			} else {
-				break;
+		this.walkRow(rowString, schema, effectColumnCounts, {
+			onChannelField(index, _key, _field, pos) {
+				if (pos <= charIndex) channelIndex = index;
 			}
-		}
-
+		});
 		return channelIndex;
 	}
 
@@ -126,47 +167,14 @@ export class PatternTemplateParser {
 		effectColumnCounts?: number[]
 	): number {
 		const segments: Array<{ start: number; end: number; fieldKey: string }> = [];
-		let pos = this.skipRowNumber(rowString, 0);
-
-		pos = this.parseGlobalTemplate(rowString, pos, schema, (key, field, currentPos) => {
-			segments.push({
-				start: currentPos,
-				end: currentPos + field.length,
-				fieldKey: key
-			});
-			return currentPos + field.length;
+		this.walkRow(rowString, schema, effectColumnCounts, {
+			onGlobalField(key, field, pos) {
+				segments.push({ start: pos, end: pos + field.length, fieldKey: key });
+			},
+			onChannelField(_channelIndex, key, field, pos) {
+				segments.push({ start: pos, end: pos + field.length, fieldKey: key });
+			}
 		});
-
-		const counts = effectColumnCounts ?? [];
-		let channelIndex = 0;
-		while (pos < rowString.length) {
-			pos = this.skipSpaces(rowString, pos);
-			if (pos >= rowString.length) break;
-
-			const layout = getChannelLayout(
-				schema,
-				counts[channelIndex] ?? MIN_CHANNEL_EFFECT_COLUMNS
-			);
-			let channelStart = pos;
-			this.parseTemplate(layout.template, layout.fields, (key, field, isSpace) => {
-				if (isSpace) {
-					if (pos < rowString.length && rowString[pos] === ' ') {
-						pos++;
-					}
-				} else {
-					segments.push({
-						start: pos,
-						end: pos + field.length,
-						fieldKey: key
-					});
-					pos += field.length;
-				}
-			});
-
-			if (pos === channelStart) break;
-			channelIndex++;
-			if (counts.length > 0 && channelIndex >= counts.length) break;
-		}
 
 		const segment = segments.find(
 			(s) => charIndex >= s.start && charIndex < s.end && s.fieldKey === fieldKey

@@ -3,10 +3,12 @@ import type { ResourceLoader } from './base/resource-loader';
 import type { ChipType } from './chip-registration';
 import { AY_CHIP } from './ay';
 import { NES_CHIP } from './nes';
+import { SAA_CHIP } from './saa';
 
 const CHIPS = {
 	ay: AY_CHIP,
-	nes: NES_CHIP
+	nes: NES_CHIP,
+	saa: SAA_CHIP
 } satisfies Record<ChipType, Chip>;
 
 export function getChipByType(chipType: string): Chip | null {

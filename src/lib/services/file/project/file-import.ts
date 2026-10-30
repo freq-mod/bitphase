@@ -117,7 +117,8 @@ function reconstructSong(data: any, getChip: (chipType: string) => Chip | null):
 				rawVirtualChannelMap
 			);
 			for (let index = 0; index < pattern.channels.length; index++) {
-				pattern.channels[index].label = effectiveLabels[index] ?? pattern.channels[index].label;
+				pattern.channels[index].label =
+					effectiveLabels[index] ?? pattern.channels[index].label;
 			}
 		}
 		return pattern;
@@ -472,6 +473,8 @@ function reconstructInstrumentRow(data: any, chipType?: string): InstrumentRow {
 	switch (chipType) {
 		case 'nes':
 			return new InstrumentRow(normalizeNesInstrumentRow(rowData));
+		case 'saa':
+			return new InstrumentRow({ ...rowData });
 		case 'ay':
 		default:
 			return new InstrumentRow({

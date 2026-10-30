@@ -11,6 +11,7 @@ import {
 	getEffectColumnCountFromGenericRow,
 	resolveSchemaField
 } from './channel-effect-columns';
+import { anchorsBeforeChannel, usesAnchoredGlobals } from './global-anchors';
 
 export abstract class BaseFormatter implements PatternFormatter {
 	decimalRowNumbers?: boolean;
@@ -26,13 +27,24 @@ export abstract class BaseFormatter implements PatternFormatter {
 		this._debugFormat = options?.debug ?? false;
 		try {
 			let result = this.getRowNumber(rowIndex) + ' ';
+			const anchored = usesAnchoredGlobals(schema);
 
-			if (schema.globalTemplate && schema.globalFields) {
+			if (!anchored && schema.globalTemplate && schema.globalFields) {
 				result +=
-					this.formatTemplate(schema.globalTemplate, patternRow, schema.globalFields) + ' ';
+					this.formatTemplate(schema.globalTemplate, patternRow, schema.globalFields) +
+					' ';
 			}
 
-			for (const channel of channels) {
+			for (let channelIndex = 0; channelIndex < channels.length; channelIndex++) {
+				const channel = channels[channelIndex];
+				if (anchored) {
+					for (const anchor of anchorsBeforeChannel(schema, channelIndex)) {
+						const value = patternRow[anchor.field];
+						result +=
+							this.formatField(isPrimitive(value) ? value : null, anchor.definition) +
+							' ';
+					}
+				}
 				const layout = getChannelLayout(
 					schema,
 					getEffectColumnCountFromGenericRow(channel)
@@ -58,6 +70,33 @@ export abstract class BaseFormatter implements PatternFormatter {
 
 		const parts = rowString.split(/\s+/);
 		let partIndex = 1;
+		const anchored = usesAnchoredGlobals(schema);
+
+		if (anchored) {
+			const channelSpaceCount = (schema.template.match(/\s/g) || []).length;
+			let channelIndex = 0;
+			while (partIndex < parts.length) {
+				for (const anchor of anchorsBeforeChannel(schema, channelIndex)) {
+					if (partIndex >= parts.length) break;
+					const token = parts[partIndex] || '';
+					partIndex++;
+					patternRow[anchor.field] = this.parseField(token, anchor.definition);
+				}
+				const channelParts: string[] = [];
+				for (let i = 0; i <= channelSpaceCount && partIndex < parts.length; i++) {
+					channelParts.push(parts[partIndex] || '');
+					partIndex++;
+				}
+				const channelString = channelParts.join(' ');
+				if (channelString) {
+					channels.push(
+						this.parseTemplate(channelString, schema.template, schema.fields)
+					);
+				}
+				channelIndex++;
+			}
+			return { patternRow, channels };
+		}
 
 		if (schema.globalTemplate && schema.globalFields) {
 			const spaceCount = (schema.globalTemplate.match(/\s/g) || []).length;
