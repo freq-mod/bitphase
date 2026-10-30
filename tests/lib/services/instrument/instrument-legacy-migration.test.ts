@@ -28,4 +28,22 @@ describe('migrateLegacyInstrument', () => {
 
 		expect(sampleTimerRowFromInstrument(migrated, 0).sid).toBe(true);
 	});
+
+	it('keeps SAA left and right volume steps', () => {
+		const migrated = migrateLegacyInstrument({
+			id: '03',
+			name: 'SAA',
+			chipType: 'saa',
+			macros: {
+				left: { values: [4, 8], loop: 0 },
+				right: { values: [2, 1], loop: 0 },
+				amplitudeSlide: { values: [0, 1], loop: 0 }
+			}
+		} as Instrument);
+
+		expect(migrated.macros?.left?.values).toEqual([4, 8]);
+		expect(migrated.macros?.right?.values).toEqual([2, 1]);
+		expect(migrated.macros?.amplitudeSlide?.values).toEqual([0, 1]);
+		expect(migrated.macros?.volume).toBeUndefined();
+	});
 });

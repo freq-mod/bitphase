@@ -218,6 +218,18 @@ const AY_TIMER_FIELDS = [
 	}
 ];
 
+const SAA_VOLUME_FIELDS = [
+	{ id: 'left', kind: 'integer', min: 0, max: 15, defaultValue: 15 },
+	{ id: 'right', kind: 'integer', min: 0, max: 15, defaultValue: 15 },
+	{
+		id: 'amplitudeSlide',
+		kind: 'enum',
+		min: AY_AMPLITUDE_SLIDE_DOWN,
+		max: AY_AMPLITUDE_SLIDE_UP,
+		defaultValue: AY_AMPLITUDE_SLIDE_OFF
+	}
+];
+
 const NES_APU_FIELDS = [
 	{ id: 'volumeOrRate', kind: 'integer', min: 0, max: 15, defaultValue: 15 },
 	{ id: 'envelope', kind: 'boolean', defaultValue: false },
@@ -390,4 +402,12 @@ export function resolveNesApuMacros(instrument) {
 
 export function sampleNesApuRow(instrument, tick, releaseTick = INSTRUMENT_MACRO_NO_RELEASE) {
 	return sampleRow(resolveNesApuMacros(instrument), tick, NES_APU_FIELDS, releaseTick);
+}
+
+export function resolveSaaVolumeMacros(instrument) {
+	return resolveMacros(instrument, SAA_VOLUME_FIELDS);
+}
+
+export function sampleSaaVolumeRow(instrument, tick, releaseTick = INSTRUMENT_MACRO_NO_RELEASE) {
+	return sampleRow(resolveSaaVolumeMacros(instrument), tick, SAA_VOLUME_FIELDS, releaseTick);
 }

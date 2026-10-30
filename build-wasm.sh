@@ -50,6 +50,8 @@ emcc ${EMCC_ARGS} \
     -s EXPORTED_FUNCTIONS='["_nes_mmc5_Init", "_nes_mmc5_Reset", "_nes_mmc5_Tick", "_nes_mmc5_Render", "_nes_mmc5_Write", "_nes_mmc5_SetMask", "_nes_mmc5_SetStereoMix", "_nes_mmc5_TickFrameSequence"]'
 
 em++ ${EMCC_ARGS} \
+	-fno-exceptions \
+	-fno-rtti \
 	external/saasound/SAAAmp.cpp \
 	external/saasound/SAADevice.cpp \
 	external/saasound/SAAEnv.cpp \
@@ -59,4 +61,4 @@ em++ ${EMCC_ARGS} \
 	external/saasound/SAASndC.cpp \
 	external/saasound/SAASound.cpp \
     -o public/saa/saasound.wasm \
-    -s EXPORTED_FUNCTIONS='["_newSAASND", "_deleteSAASND", "_SAASNDSetSoundParameters", "_SAASNDWriteAddress", "_SAASNDWriteData", "_SAASNDWriteAddressData", "_SAASNDClear", "_SAASNDGetCurrentSoundParameters", "_SAASNDGetCurrentBytesPerSample", "_SAASNDGetBytesPerSample", "_SAASNDGetCurrentSampleRate", "_SAASNDGetSampleRate", "_SAASNDGenerateMany", "_SAASNDSetClockRate", "_SAASNDSetSampleRate", "_SAASNDSetOversample", "_SAASNDSetHighpass", "_SAASNDGenerateManySeparate", "_SAASNDSetOutputMixerBitmask"]'
+    -s EXPORTED_FUNCTIONS='["_newSAASND", "_deleteSAASND", "_SAASNDSetSoundParameters", "_SAASNDWriteAddress", "_SAASNDWriteData", "_SAASNDWriteAddressData", "_SAASNDClear", "_SAASNDGetCurrentSoundParameters", "_SAASNDGetCurrentBytesPerSample", "_SAASNDGetBytesPerSample", "_SAASNDGetCurrentSampleRate", "_SAASNDGetSampleRate", "_SAASNDGenerateMany", "_SAASNDSetClockRate", "_SAASNDSetSampleRate", "_SAASNDSetOversample", "_SAASNDSetHighpass", "_SAASNDGenerateManySeparate", "_SAASNDSetOutputMixerBitmask", "_malloc", "_free"]'

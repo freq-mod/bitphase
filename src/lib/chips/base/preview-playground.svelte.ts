@@ -40,6 +40,8 @@ export type ChipPreviewPlaygroundOptions = {
 export function createChipPreviewPlayground(options: ChipPreviewPlaygroundOptions) {
 	let table = $state('');
 	let volume = $state('F');
+	let left = $state('F');
+	let right = $state('F');
 	let activeNotes = $state<Array<{ key: string; note: string; slot: number }>>([]);
 	let playbackNotes = $state<string[]>([]);
 	let lastPlayedNotes = $state<string[]>(['C-4']);
@@ -265,6 +267,8 @@ export function createChipPreviewPlayground(options: ChipPreviewPlaygroundOption
 				instrumentId,
 				table,
 				volume,
+				left,
+				right,
 				noteStrings: channelNotes,
 				channelLabels: options.getPreviewChannelLabels?.()
 			});
@@ -386,6 +390,22 @@ export function createChipPreviewPlayground(options: ChipPreviewPlaygroundOption
 		volume = clampVolumeInput(volume);
 	}
 
+	function handleLeftInput(event: Event) {
+		left = filterVolumeInput((event.currentTarget as HTMLInputElement).value || '', left);
+	}
+
+	function clampLeft() {
+		left = clampVolumeInput(left);
+	}
+
+	function handleRightInput(event: Event) {
+		right = filterVolumeInput((event.currentTarget as HTMLInputElement).value || '', right);
+	}
+
+	function clampRight() {
+		right = clampVolumeInput(right);
+	}
+
 	return {
 		get table() {
 			return table;
@@ -398,6 +418,18 @@ export function createChipPreviewPlayground(options: ChipPreviewPlaygroundOption
 		},
 		set volume(value: string) {
 			volume = value;
+		},
+		get left() {
+			return left;
+		},
+		set left(value: string) {
+			left = value;
+		},
+		get right() {
+			return right;
+		},
+		set right(value: string) {
+			right = value;
 		},
 		get noteInputEl() {
 			return noteInputEl;
@@ -432,6 +464,10 @@ export function createChipPreviewPlayground(options: ChipPreviewPlaygroundOption
 		handleTableInput,
 		clampTable,
 		handleVolumeInput,
-		clampVolume
+		clampVolume,
+		handleLeftInput,
+		clampLeft,
+		handleRightInput,
+		clampRight
 	};
 }

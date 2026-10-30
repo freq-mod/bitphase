@@ -148,6 +148,16 @@ class EffectAlgorithms {
 		};
 	}
 
+	static slideVolume(level, parameter) {
+		let volume = level | 0;
+		if (volume < 0) volume = 0;
+		volume -= parameter & 0x0f;
+		if (volume < 0) volume = 0;
+		volume += (parameter >> 4) & 0x0f;
+		if (volume > 15) volume = 15;
+		return volume;
+	}
+
 	static processOnOffCounter(counter, onDuration, offDuration, enabled) {
 		if (counter > 0) {
 			const newCounter = counter - 1;

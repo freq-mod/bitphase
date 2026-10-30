@@ -679,13 +679,8 @@ class TrackerPatternProcessor {
 			counters[channelIndex] = delay === 0 ? 1 : delay;
 			const param = slides[channelIndex] | 0;
 			if (!param) continue;
-			let volume = volumes[channelIndex] | 0;
-			if (volume < 0) volume = 0;
-			volume -= param & 0x0f;
-			if (volume < 0) volume = 0;
-			volume += (param >> 4) & 0x0f;
-			if (volume > 15) volume = 15;
-			volumes[channelIndex] = volume;
+			volumes[channelIndex] = EffectAlgorithms.slideVolume(volumes[channelIndex], param);
+			this.chipAudioDriver.applyVolumeSlide?.(this.state, channelIndex, param);
 		}
 	}
 

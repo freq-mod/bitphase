@@ -16,6 +16,7 @@ import {
 } from '@/lib/chips/base/preview-row-utils';
 import { AY_CHIP_SCHEMA } from '@/lib/chips/ay/schema';
 import { NES_CHIP_SCHEMA } from '@/lib/chips/nes/schema';
+import { SAA_CHIP_SCHEMA } from '@/lib/chips/saa/schema';
 import { NoteName } from '@/lib/models/song';
 
 describe('preview-row-utils', () => {
@@ -104,6 +105,21 @@ describe('preview-row-utils', () => {
 		expect(pattern.channels[0].rows[0].note.name).toBe(NoteName.C);
 		expect(pattern.channels[1].rows[0].note.name).toBe(NoteName.E);
 		expect(pattern.channels[2].rows[0].note.name).toBe(NoteName.Off);
+	});
+
+	it('sets SAA left and right preview levels independently', () => {
+		const pattern = buildPreviewPattern({
+			schema: SAA_CHIP_SCHEMA,
+			instrumentId: '03',
+			table: '',
+			volume: 'F',
+			left: '4',
+			right: 'A',
+			noteStrings: ['C-4']
+		});
+
+		expect(pattern.channels[0].rows[0].left).toBe(4);
+		expect(pattern.channels[0].rows[0].right).toBe(10);
 	});
 
 	it('builds an NES preview pattern with all schema channels', () => {

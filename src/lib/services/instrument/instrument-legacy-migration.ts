@@ -8,6 +8,7 @@ import { AY_MIXER_MACRO_FIELDS } from '../../chips/ay/mixer-macros';
 import { AY_TIMER_MACRO_FIELDS } from '../../chips/ay/ay-timer-macros';
 import { normalizeLegacyTimerRow } from '../../chips/ay/instrument';
 import { NES_APU_MACRO_FIELDS } from '../../chips/nes/apu-macros';
+import { SAA_VOLUME_MACRO_FIELDS } from '../../chips/saa/volume-macros';
 import { Instrument } from '../../models/song';
 
 export type LegacyInstrument = Instrument & {
@@ -22,7 +23,9 @@ export type LegacyInstrument = Instrument & {
 };
 
 function mixerFieldsForChip(chipType: string): readonly InstrumentMacroField[] {
-	return chipType === 'nes' ? NES_APU_MACRO_FIELDS : AY_MIXER_MACRO_FIELDS;
+	if (chipType === 'nes') return NES_APU_MACRO_FIELDS;
+	if (chipType === 'saa') return SAA_VOLUME_MACRO_FIELDS;
+	return AY_MIXER_MACRO_FIELDS;
 }
 
 function migrateMixerMacros(

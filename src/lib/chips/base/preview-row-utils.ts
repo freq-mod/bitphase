@@ -124,21 +124,29 @@ export function buildPreviewPattern(options: {
 	instrumentId: string;
 	table: string;
 	volume: string;
+	left?: string;
+	right?: string;
 	noteStrings: string[];
 	channelLabels?: string[];
 }): Pattern {
 	const pattern = new PatternModel(0, 1, options.schema, options.channelLabels) as Pattern;
 	const instNum = instrumentIdToNumber(options.instrumentId || '01') || 1;
 	const vol = previewVolumeValue(options.volume);
+	const left = previewVolumeValue(options.left ?? options.volume);
+	const right = previewVolumeValue(options.right ?? options.volume);
 	const tbl = parseTableChar(options.table);
 	const hasTable = Boolean(options.schema.fields?.table);
 	const hasVolume = Boolean(options.schema.fields?.volume);
+	const hasLeft = Boolean(options.schema.fields?.left);
+	const hasRight = Boolean(options.schema.fields?.right);
 
 	for (let ch = 0; ch < pattern.channels.length; ch++) {
 		const row = pattern.channels[ch].rows[0];
 		row.instrument = instNum;
 		if (hasTable) row.table = tbl;
 		if (hasVolume) row.volume = vol;
+		if (hasLeft) row.left = left;
+		if (hasRight) row.right = right;
 		row.effects = [null];
 		const noteStr = options.noteStrings[ch] ?? 'OFF';
 		const { noteName, octave } = parseNoteFromString(noteStr);

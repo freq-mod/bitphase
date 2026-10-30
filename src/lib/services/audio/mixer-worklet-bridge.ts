@@ -62,6 +62,7 @@ export type MixerSlotCommand =
 	| { type: 'init_instruments'; instruments: Instrument[] }
 	| { type: 'update_ay_frequency'; aymFrequency: number }
 	| { type: 'update_cpu_frequency'; cpuFrequency: number }
+	| { type: 'update_clock_rate'; clockRate: number }
 	| { type: 'update_int_frequency'; intFrequency: number }
 	| { type: 'update_tempo'; tempo: number }
 	| { type: 'update_chip_variant'; chipVariant: string }
