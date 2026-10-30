@@ -40,3 +40,15 @@ emcc ${EMCC_ARGS} \
 	external/nsfplug/nes_mmc5.c \
     -o public/nes/nes_mmc5.wasm \
     -s EXPORTED_FUNCTIONS='["_nes_mmc5_Init", "_nes_mmc5_Reset", "_nes_mmc5_Tick", "_nes_mmc5_Render", "_nes_mmc5_Write", "_nes_mmc5_SetMask", "_nes_mmc5_SetStereoMix", "_nes_mmc5_TickFrameSequence"]'
+
+em++ ${EMCC_ARGS} \
+	external/saasound/SAAAmp.cpp \
+	external/saasound/SAADevice.cpp \
+	external/saasound/SAAEnv.cpp \
+	external/saasound/SAAFreq.cpp \
+	external/saasound/SAAImpl.cpp \
+	external/saasound/SAANoise.cpp \
+	external/saasound/SAASndC.cpp \
+	external/saasound/SAASound.cpp \
+    -o public/saa/saasound.wasm \
+    -s EXPORTED_FUNCTIONS='["_newSAASND", "_deleteSAASND", "_SAASNDSetSoundParameters", "_SAASNDWriteAddress", "_SAASNDWriteData", "_SAASNDWriteAddressData", "_SAASNDClear", "_SAASNDGetCurrentSoundParameters", "_SAASNDGetCurrentBytesPerSample", "_SAASNDGetBytesPerSample", "_SAASNDGetCurrentSampleRate", "_SAASNDGetSampleRate", "_SAASNDGenerateMany", "_SAASNDSetClockRate", "_SAASNDSetSampleRate", "_SAASNDSetOversample", "_SAASNDSetHighpass", "_SAASNDGenerateManySeparate", "_SAASNDSetOutputMixerBitmask"]'
