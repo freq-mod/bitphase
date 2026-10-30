@@ -1998,11 +1998,11 @@
 		}
 	}
 
-	function findCellAtPosition(x: number, y: number): { row: number; column: number } | null {
+	function findCellAtPosition(
+		x: number,
+		y: number
+	): { row: number; column: number; orderIndex: number } | null {
 		if (!canvas || !currentPattern || !renderer || !textParser) return null;
-
-		const patternToRender = findOrCreatePattern(currentPattern.id);
-
 		if (y <= lineHeight) return null;
 
 		const visibleRows = getVisibleRows(currentPattern);
@@ -2010,14 +2010,10 @@
 		let closestRow: (typeof visibleRows)[0] | null = null;
 		let minRowDistance = Infinity;
 
-		const patternId = patternOrder[currentPatternOrderIndex];
-
 		for (const row of visibleRows) {
-			if (row.isEmpty || row.rowIndex < 0 || row.isGhost || row.patternIndex !== patternId)
-				continue;
+			if (row.isEmpty || row.rowIndex < 0) continue;
 
-			const rowY = row.displayIndex * lineHeight;
-			const rowCenterY = rowY + lineHeight / 2;
+			const rowCenterY = row.displayIndex * lineHeight + lineHeight / 2;
 			const distance = Math.abs(y - rowCenterY);
 
 			if (distance < minRowDistance) {
@@ -2028,10 +2024,26 @@
 
 		if (!closestRow) return null;
 
-		const rowString = getPatternRowData(patternToRender, closestRow.rowIndex);
+		const pattern = findOrCreatePattern(closestRow.patternIndex);
+		const rowString = getPatternRowData(pattern, closestRow.rowIndex);
 		const cellPositions = getCellPositions(rowString, closestRow.rowIndex);
-		const closestColumn = getColumnAtX(cellPositions, x);
-		return { row: closestRow.rowIndex, column: closestColumn };
+		const column = getColumnAtX(cellPositions, x);
+		return { row: closestRow.rowIndex, column, orderIndex: closestRow.orderIndex };
+	}
+
+	function jumpToOrderRow(orderIndex: number, row: number, column: number): void {
+		selectionStartRow = null;
+		selectionStartColumn = null;
+		selectionEndRow = null;
+		selectionEndColumn = null;
+		mouseDownCell = null;
+		pressOnInactiveEditor = false;
+		if (currentPatternOrderIndex !== orderIndex) {
+			currentPatternOrderIndex = orderIndex;
+			discardPendingPlaybackPosition(orderIndex);
+		}
+		selectedRow = row;
+		selectedColumn = column;
 	}
 
 	function handleCanvasMouseDown(event: MouseEvent): void {
@@ -2100,6 +2112,15 @@
 			selectionEndRow = null;
 			selectionEndColumn = null;
 			mouseDownCell = null;
+			draw();
+			return;
+		}
+
+		if (cell.orderIndex !== currentPatternOrderIndex) {
+			if (!playbackStore.isPlaying) {
+				jumpToOrderRow(cell.orderIndex, cell.row, cell.column);
+			}
+			canvas.focus();
 			draw();
 			return;
 		}
@@ -2208,7 +2229,7 @@
 		if (!mouseDownCell || playbackStore.isPlaying) return;
 
 		const cell = findCellAtPosition(x, y);
-		if (!cell) return;
+		if (!cell || cell.orderIndex !== currentPatternOrderIndex) return;
 
 		if (!isSelecting) {
 			const movedToDifferentCell =
