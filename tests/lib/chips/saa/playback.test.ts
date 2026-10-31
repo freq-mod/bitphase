@@ -6,6 +6,7 @@ import SaaRegisterState from '../../../../public/saa/saa-register-state.js';
 import SaaState from '../../../../public/saa/saa-state.js';
 import TrackerPatternProcessor from '../../../../public/tracker/tracker-pattern-processor.js';
 import { createSaaSoundEngine } from '../../../../public/saa/saa-engine.js';
+import { saaWasmImports } from '../../../../public/saa/saa-wasm-imports.js';
 import { saaPeriodFromCode, saaPitchCode } from '../../../../public/saa/saa-levels.js';
 import EffectAlgorithms from '../../../../public/tracker/effect-algorithms.js';
 
@@ -195,9 +196,7 @@ describe('SAA tone playback', () => {
 
 	it('renders an audible square on the addressed side', async () => {
 		const wasm = readFileSync('public/saa/saasound.wasm');
-		const { instance } = await WebAssembly.instantiate(wasm, {
-			env: { emscripten_notify_memory_growth: () => {} }
-		});
+		const { instance } = await WebAssembly.instantiate(wasm, saaWasmImports());
 		const engine = createSaaSoundEngine(instance.exports, SAA_SAM_CLOCK, 44100);
 		const registers = new SaaRegisterState(6);
 		registers.channels[0] = { tone: true, left: 15, right: 0, octave: 3, freq: 227 };

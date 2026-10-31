@@ -5,6 +5,7 @@ import { createSaaSoundEngine } from './saa-engine.js';
 import { saaPeriodFromCode, saaToneFrequency } from './saa-levels.js';
 import { SaaWaveformCapture } from './saa-waveform.js';
 import { SAA_CHANNEL_COUNT } from './saa-constants.js';
+import { saaWasmImports } from './saa-wasm-imports.js';
 import TrackerPatternProcessor from '../tracker/tracker-pattern-processor.js';
 import { TrackerWorkletSlot } from '../tracker/tracker-worklet-slot.js';
 
@@ -97,9 +98,7 @@ export class SaaWorkletSlot extends TrackerWorkletSlot {
 			return;
 		}
 		try {
-			const result = await WebAssembly.instantiate(wasmBuffer, {
-				env: { emscripten_notify_memory_growth: () => {} }
-			});
+			const result = await WebAssembly.instantiate(wasmBuffer, saaWasmImports());
 			const wasmModule = result.instance.exports;
 			this.engine = createSaaSoundEngine(wasmModule, this.state.clockRate, sampleRate);
 			this.state.setWasmModule(wasmModule, this.engine.chipPtr, wasmBuffer);
