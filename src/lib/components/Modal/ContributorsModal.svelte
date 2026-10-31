@@ -14,6 +14,7 @@
 		'Testers: phase-mod, Abyxus',
 		'Ayumi emulator by Peter Sovietov',
 		"NSFPlug soundchip cores based on Brad Smith's NSFPlay 2.6",
+		'SAASound emulator by Dave Hooper and Simon Owen',
 		'Bitphase logo by Grongy',
 		'Special thanks to Otomata Labs, Megus, Jammer, Tygrys, e!ghtbm, Tomarkus, arabek, MmcM, nq, KK, AceMan, MaV, LiSU, Volutar, MameXLIII',
 		"and everyone else I've forgot to mention",
